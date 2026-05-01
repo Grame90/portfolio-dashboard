@@ -155,6 +155,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ── Auth state ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    // Always load from localStorage first so UI is never empty
+    setPositions(readPositions());
+    setSettings(readSettings());
+
     supabase.auth.getUser().then(({ data: { user: u } }) => {
       setUser(u);
       if (u) loadFromCloud(u.id).finally(() => setAuthLoading(false));
@@ -166,8 +170,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setUser(u);
       if (u) await loadFromCloud(u.id);
       else {
-        setPositions([]);
-        setSettings(DEFAULT_SETTINGS);
+        setPositions(readPositions());
+        setSettings(readSettings());
       }
     });
 

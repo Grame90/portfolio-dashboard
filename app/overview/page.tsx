@@ -122,6 +122,35 @@ export default function OverviewPage() {
   const app = useApp();
   const [history, setHistory] = useState<ChartPoint[]>([]);
   const lastSavedTotal = useRef(0);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillDone, setBackfillDone] = useState(false);
+
+  async function handleBackfill() {
+    if (!app.positions.length) return;
+    setBackfilling(true);
+    try {
+      const res = await fetch("/api/backfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positions: app.positions }),
+      });
+      if (!res.ok) throw new Error();
+      const { chartHistory, dividendHistory } = await res.json();
+      if (chartHistory?.length) {
+        localStorage.setItem("portfolio-chart-history", JSON.stringify(chartHistory));
+        setHistory(chartHistory);
+      }
+      if (dividendHistory?.length) {
+        const existing = loadDividends();
+        const existingIds = new Set(existing.map((d: ReceivedDividend) => d.id));
+        const merged = [...dividendHistory.filter((d: ReceivedDividend) => !existingIds.has(d.id)), ...existing];
+        localStorage.setItem("dividends-received", JSON.stringify(merged));
+        setReceivedDividends(merged);
+      }
+      setBackfillDone(true);
+    } catch {}
+    setBackfilling(false);
+  }
 
   const livePosStats = app.positions
     .filter(p => p.type !== "Кэш")
@@ -629,12 +658,25 @@ export default function OverviewPage() {
 
             {/* Chart */}
             {chartData.length < 2 ? (
-              <div style={{ height: 190, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, color: "var(--text-muted)" }}>
+              <div style={{ height: 190, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--text-muted)" }}>
                 <svg width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2} opacity={0.4}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
                 </svg>
                 <span style={{ fontSize: 12, opacity: 0.6 }}>История накапливается — заходи каждый день</span>
-                <span style={{ fontSize: 10, opacity: 0.4 }}>Сегодняшняя точка уже сохранена</span>
+                {app.positions.length > 0 && !backfillDone && (
+                  <button
+                    onClick={handleBackfill}
+                    disabled={backfilling}
+                    style={{
+                      padding: "8px 18px", borderRadius: 8, border: "none", cursor: backfilling ? "wait" : "pointer",
+                      background: "var(--accent)", color: "#fff", fontSize: 12, fontWeight: 600,
+                      opacity: backfilling ? 0.7 : 1,
+                    }}
+                  >
+                    {backfilling ? "Загружаю историю…" : "Восстановить историю из API"}
+                  </button>
+                )}
+                {backfillDone && <span style={{ fontSize: 11, color: "#22c55e" }}>✓ История восстановлена</span>}
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={190}>

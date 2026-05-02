@@ -957,7 +957,7 @@ export default function OverviewPage() {
 
           <div className="card">
             <div className="card-title">Итоговая статистика</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: 10 }}>
               {[
                 { label: "Общая прибыль (USD)", value: `${app.totalPnl >= 0 ? "+" : ""}${Math.round(app.totalPnl).toLocaleString("en-US")}`, color: app.totalPnl >= 0 ? "#22c55e" : "#ef4444" },
                 { label: "Общая прибыль (%)", value: `${app.totalPnlPct >= 0 ? "+" : ""}${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnlPct >= 0 ? "#22c55e" : "#ef4444" },
@@ -982,7 +982,7 @@ export default function OverviewPage() {
       {/* Long-term strategy */}
       <div style={{ padding: isMobile ? "0 12px 12px" : "0 24px 16px" }}>
         <div className="card">
-          <div style={{ display: "flex", gap: 24 }}>
+          <div style={{ display: "flex", gap: isMobile ? 12 : 24, flexDirection: isMobile ? "column" : "row" }}>
             <div style={{ flex: 1 }}>
               <div className="card-title">Долгосрочная стратегия</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1002,7 +1002,7 @@ export default function OverviewPage() {
             </div>
             <div style={{
               padding: "20px 32px", background: "linear-gradient(135deg, #1a0a3a, #0d0020)", borderRadius: 12,
-              textAlign: "center", border: "1px solid var(--border)", position: "relative", overflow: "hidden", minWidth: 160,
+              textAlign: "center", border: "1px solid var(--border)", position: "relative", overflow: "hidden", minWidth: isMobile ? 0 : 160,
             }}>
               <div style={{
                 position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)",

@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useMobile } from "@/lib/useMobile";
 import { useApp } from "@/lib/AppContext";
 
 export default function AuthPage() {
   const { signIn, signUp } = useApp();
+  const isMobile = useMobile();
   const router = useRouter();
 
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -78,7 +80,7 @@ export default function AuthPage() {
       }} />
 
       <div style={{
-        width: 400, padding: "40px 36px",
+        width: isMobile ? "calc(100vw - 32px)" : 400, padding: isMobile ? "28px 20px" : "40px 36px",
         background: "#111128", borderRadius: 20,
         border: "1px solid #1e1e45",
         boxShadow: "0 24px 64px rgba(0,0,0,0.6)",

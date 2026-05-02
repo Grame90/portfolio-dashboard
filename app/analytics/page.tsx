@@ -696,7 +696,7 @@ export default function AnalyticsPage() {
                 Нет истории портфеля для отображения просадки
               </div>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginTop: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 8, marginTop: 8 }}>
               {[
                 { label: "Текущая просадка", value: drawdownStats.current !== 0 ? `${drawdownStats.current.toFixed(2)}%` : "0%", color: "#ef4444" },
                 { label: "Макс. просадка", value: drawdownStats.max !== 0 ? `${drawdownStats.max.toFixed(2)}%` : "0%", color: "#ef4444" },

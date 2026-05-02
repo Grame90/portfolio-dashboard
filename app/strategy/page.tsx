@@ -364,7 +364,7 @@ export default function StrategyPage() {
         </div>
 
         {/* Row 2: Target allocation + Action plan + Portfolio rules + AI insights */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1.2fr 1fr 1fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Текущее распределение активов</div>
             <div style={{ position: "relative" }}>
@@ -441,7 +441,7 @@ export default function StrategyPage() {
         </div>
 
         {/* Row 3: Macro + AI signals + Long-term strategy */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1.2fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1.2fr 1fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Макроэкономический прогноз</div>
             <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>

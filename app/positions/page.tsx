@@ -745,7 +745,7 @@ export default function PositionsPage() {
             { label: "Кэш",             value: `${positions.filter(p => p.type === "Кэш").reduce((s, p) => s + p.share, 0).toFixed(1)}%`,   sub: `$${positions.filter(p => p.type === "Кэш").reduce((s, p) => s + p.value, 0).toLocaleString("en-US")}` },
           ];
           return (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(8, 1fr)", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(8, 1fr)", gap: 6 }}>
               {metrics.map((m) => (
                 <div key={m.label} className="card" style={{ padding: "8px 10px" }}>
                   <div style={{ fontSize: 9, color: "var(--text-secondary)", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.label}</div>

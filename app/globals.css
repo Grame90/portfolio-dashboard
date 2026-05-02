@@ -263,6 +263,10 @@ body {
 }
 
 @media (max-width: 767px) {
+  /* Prevent ANY horizontal overflow */
+  html, body { overflow-x: hidden; max-width: 100vw; }
+  * { max-width: 100%; box-sizing: border-box; }
+
   /* Metric value font size on small screens */
   .metric-value { font-size: 20px !important; }
 
@@ -272,12 +276,22 @@ body {
   /* Tabs wrap on mobile */
   .tab-btn { padding: 6px 10px; font-size: 11px; }
 
-  /* Auth page — full width on mobile */
-  #auth-card { width: 100% !important; max-width: 380px; }
+  /* Tabs container: allow wrap */
+  .tab-btn-group { flex-wrap: wrap !important; }
 
   /* Bottom nav safe area */
-  body { padding-bottom: env(safe-area-inset-bottom); }
+  body { padding-bottom: max(60px, env(safe-area-inset-bottom)); }
 
   /* recharts: prevent overflow */
-  .recharts-wrapper { overflow: hidden !important; }
+  .recharts-wrapper { overflow: hidden !important; max-width: 100% !important; }
+  .recharts-surface { overflow: visible; }
+
+  /* Tables: always scrollable */
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Large font values: scale down */
+  [style*="fontSize: 32"] { font-size: 22px !important; }
+  [style*="fontSize: 28"] { font-size: 20px !important; }
+  [style*="fontSize: 26"] { font-size: 18px !important; }
+  [style*="fontSize: 22"] { font-size: 16px !important; }
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useMobile } from "@/lib/useMobile";
+import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, ReferenceLine, CartesianGrid,
@@ -141,6 +142,8 @@ export default function PortfolioPage() {
   const [positions, setPositions] = useState<LivePosition[]>([]);
   const [lastTick, setLastTick] = useState<Record<number, "up" | "down" | null>>({});
   const [quoteStatus, setQuoteStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [lastPriceT, setLastPriceT] = useState<number>(0);
+  const market = useMarketStatus();
   const [liveSnapshots, setLiveSnapshots] = useState<Snapshot[]>([]);
   const [visibleCols, setVisibleCols] = useState<Set<ColId>>(DEFAULT_COLS);
   const [colPickerOpen, setColPickerOpen] = useState(false);
@@ -161,7 +164,7 @@ export default function PortfolioPage() {
 
     setQuoteStatus("loading");
     try {
-      const allData: Record<string, { current: number; previousClose: number }> = {};
+      const allData: Record<string, { current: number; previousClose: number; t?: number }> = {};
 
       if (stockPositions.length > 0) {
         const tickers = stockPositions.map((p) => p.ticker);
@@ -173,6 +176,9 @@ export default function PortfolioPage() {
         const res = await fetch(`/api/crypto?tickers=${tickers.join(",")}`);
         if (res.ok) Object.assign(allData, await res.json());
       }
+
+      const maxT = Object.values(allData).reduce((m, q) => Math.max(m, (q as any).t ?? 0), 0);
+      if (maxT > 0) setLastPriceT(maxT);
 
       setPositions((prev) =>
         recompute(
@@ -632,9 +638,22 @@ export default function PortfolioPage() {
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 320px", gap: 12 }}>
           <div className="card" style={{ minWidth: 0 }}>
             {/* Table header with status + column picker */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
               <div className="card-title" style={{ marginBottom: 0 }}>Текущие позиции</div>
-              <div style={{ display: "flex", gap: isMobile ? 4 : 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: isMobile ? 4 : 6, alignItems: "center", flexWrap: "wrap" }}>
+                {/* Market status */}
+                <span style={{
+                  fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 600,
+                  background: `${market.color}18`, color: market.color, display: "flex", alignItems: "center", gap: 4,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: market.color, display: "inline-block",
+                    animation: market.state === "open" ? "pulse 1.5s infinite" : "none" }} />
+                  {market.label}
+                </span>
+                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{market.etTime} ET</span>
+                {lastPriceT > 0 && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>· {formatEtTime(lastPriceT)}</span>
+                )}
                 <span style={{
                   fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4,
                   background: quoteStatus === "ok" ? "rgba(34,197,94,0.12)" : quoteStatus === "error" ? "rgba(239,68,68,0.12)" : "rgba(124,58,237,0.12)",

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useMobile } from "@/lib/useMobile";
+import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -172,6 +173,8 @@ export default function PositionsPage() {
   const [editTarget, setEditTarget] = useState<Position | null>(null);
   const [editForm, setEditForm] = useState<typeof emptyForm & { purchaseDate: string }>(emptyForm);
   const [quoteStatus, setQuoteStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [lastPriceT, setLastPriceT] = useState<number>(0);
+  const market = useMarketStatus();
 
   // Fetch real quotes — stocks via Finnhub, crypto via CoinGecko
   const fetchQuotes = useCallback(async (current: Position[]) => {
@@ -181,7 +184,7 @@ export default function PositionsPage() {
 
     setQuoteStatus("loading");
     try {
-      const allData: Record<string, { current: number; previousClose: number }> = {};
+      const allData: Record<string, { current: number; previousClose: number; t?: number }> = {};
 
       if (stockPositions.length > 0) {
         const tickers = stockPositions.map((p) => p.ticker);
@@ -194,6 +197,10 @@ export default function PositionsPage() {
         const res = await fetch(`/api/crypto?tickers=${tickers.join(",")}`);
         if (res.ok) Object.assign(allData, await res.json());
       }
+
+      // Pick the most recent Finnhub timestamp across all quotes
+      const maxT = Object.values(allData).reduce((m, q) => Math.max(m, (q as any).t ?? 0), 0);
+      if (maxT > 0) setLastPriceT(maxT);
 
       setPositions((prev) =>
         recompute(
@@ -896,13 +903,29 @@ export default function PositionsPage() {
         {/* Table + Portfolio structure */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 280px", gap: 12 }}>
           <div className="card" style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 6 }}>
               <div className="card-title">Текущие позиции</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 4, color: "#22c55e" }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", display: "inline-block", animation: "pulse 1.5s infinite" }} />
-                  Live цены
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                {/* Market status */}
+                <span style={{
+                  fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 600,
+                  background: `${market.color}18`, color: market.color, display: "flex", alignItems: "center", gap: 4,
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: market.color, display: "inline-block",
+                    animation: market.state === "open" ? "pulse 1.5s infinite" : "none" }} />
+                  {market.label}
                 </span>
+                {/* ET clock */}
+                <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>
+                  {market.etTime} ET
+                </span>
+                {/* Last price timestamp from Finnhub */}
+                {lastPriceT > 0 && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                    · цены {formatEtTime(lastPriceT)}
+                  </span>
+                )}
+                {/* API status */}
                 <span style={{
                   fontSize: 10, padding: "2px 7px", borderRadius: 20, fontWeight: 600,
                   background: quoteStatus === "ok" ? "rgba(34,197,94,0.12)" : quoteStatus === "error" ? "rgba(239,68,68,0.12)" : "rgba(148,163,184,0.12)",

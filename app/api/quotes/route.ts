@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       if (!res.ok) throw new Error(`Finnhub error ${res.status} for ${symbol}`);
 
       const data = await res.json();
-      // Finnhub fields: c=current, pc=previous close, o=open, h=high, l=low
+      // Finnhub fields: c=current, pc=previous close, o=open, h=high, l=low, t=unix timestamp
       return {
         ticker,
         current: data.c ?? 0,
@@ -38,6 +38,7 @@ export async function GET(request: Request) {
         open: data.o ?? 0,
         high: data.h ?? 0,
         low: data.l ?? 0,
+        t: data.t ?? 0,
       };
     })
   );

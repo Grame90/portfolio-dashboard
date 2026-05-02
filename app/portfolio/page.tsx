@@ -414,14 +414,14 @@ export default function PortfolioPage() {
     return { label: "ДЕРЖАТЬ", color: "#9d6ef5", desc: "Портфель сбалансирован. Продолжайте следовать целевой стратегии" };
   })();
 
-  const periodPnl: Record<string, { usd: number; pct: string }> = useMemo(() => {
+  const periodPnl: Record<string, { usd: number; pct: string; noData: boolean }> = useMemo(() => {
     function diff(period: string) {
       const cutoff = periodCutoff(period);
       const pt = [...history].reverse().find(p => p.date <= cutoff);
-      if (!pt || portfolioTotal <= 0) return { usd: 0, pct: "0.00" };
+      if (!pt || portfolioTotal <= 0) return { usd: 0, pct: "0.00", noData: true };
       const usd = Math.round(portfolioTotal - pt.value);
       const pct = pt.value > 0 ? ((portfolioTotal - pt.value) / pt.value * 100).toFixed(2) : "0.00";
-      return { usd, pct };
+      return { usd, pct, noData: false };
     }
     return {
       "1Д": diff("1Д"), "7Д": diff("7Д"), "1М": diff("1М"),
@@ -520,15 +520,24 @@ export default function PortfolioPage() {
               {(() => {
                 const dailyChange = portfolioTotal - prevTotal;
                 return [
-                  { label: "За день", value: dailyChange, pct: dailyChangePct },
-                  { label: "За неделю", value: periodPnl["7Д"].usd, pct: parseFloat(periodPnl["7Д"].pct) },
-                  { label: "За месяц", value: periodPnl["1М"].usd, pct: parseFloat(periodPnl["1М"].pct) },
-                  { label: "За год (YTD)", value: periodPnl["YTD"].usd, pct: parseFloat(periodPnl["YTD"].pct) },
+                  { label: "За день",       value: dailyChange,             pct: dailyChangePct,                   noData: false },
+                  { label: "За неделю",     value: periodPnl["7Д"].usd,    pct: parseFloat(periodPnl["7Д"].pct),  noData: periodPnl["7Д"].noData },
+                  { label: "За месяц",      value: periodPnl["1М"].usd,    pct: parseFloat(periodPnl["1М"].pct),  noData: periodPnl["1М"].noData },
+                  { label: "За год (YTD)",  value: periodPnl["YTD"].usd,   pct: parseFloat(periodPnl["YTD"].pct), noData: periodPnl["YTD"].noData },
                 ].map((m) => (
                   <div key={m.label} style={{ padding: "6px 8px", background: "var(--bg-secondary)", borderRadius: 8 }}>
                     <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{m.label}</div>
-                    <div className={m.value >= 0 ? "positive" : "negative"} style={{ fontSize: 14, fontWeight: 700 }}>{m.value >= 0 ? "+" : ""}{Math.round(Math.abs(m.value)).toLocaleString("en-US")}</div>
-                    <div className={m.pct >= 0 ? "positive" : "negative"} style={{ fontSize: 12 }}>{m.pct >= 0 ? "+" : ""}{Math.abs(m.pct).toFixed(2)}%</div>
+                    {m.noData ? (
+                      <>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-muted)" }}>–</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>нет данных</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className={m.value >= 0 ? "positive" : "negative"} style={{ fontSize: 14, fontWeight: 700 }}>{m.value >= 0 ? "+" : ""}{Math.round(Math.abs(m.value)).toLocaleString("en-US")}</div>
+                        <div className={m.pct >= 0 ? "positive" : "negative"} style={{ fontSize: 12 }}>{m.pct >= 0 ? "+" : ""}{Math.abs(m.pct).toFixed(2)}%</div>
+                      </>
+                    )}
                   </div>
                 ));
               })()}
@@ -1334,9 +1343,13 @@ export default function PortfolioPage() {
                 <div className="card-title" style={{ marginBottom: 2 }}>Динамика портфеля</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                   <span style={{ fontSize: 18, fontWeight: 700 }}>{portfolioTotal.toLocaleString("en-US")} USD</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: periodPnl[period].usd >= 0 ? "#22c55e" : "#ef4444" }}>
-                    {periodPnl[period].usd >= 0 ? "+" : ""}{periodPnl[period].usd.toLocaleString("en-US")} ({periodPnl[period].usd >= 0 ? "+" : ""}{periodPnl[period].pct}%)
-                  </span>
+                  {periodPnl[period].noData ? (
+                    <span style={{ fontSize: 13, color: "var(--text-muted)" }}>нет данных за период</span>
+                  ) : (
+                    <span style={{ fontSize: 13, fontWeight: 600, color: periodPnl[period].usd >= 0 ? "#22c55e" : "#ef4444" }}>
+                      {periodPnl[period].usd >= 0 ? "+" : ""}{periodPnl[period].usd.toLocaleString("en-US")} ({periodPnl[period].usd >= 0 ? "+" : ""}{periodPnl[period].pct}%)
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
                   <span style={{ fontSize: 11, color: "var(--text-secondary)", display: "flex", alignItems: "center", gap: 4 }}>

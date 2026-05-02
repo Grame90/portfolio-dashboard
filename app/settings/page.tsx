@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
 import { connections } from "@/lib/mockData";
 import { useApp } from "@/lib/AppContext";
+import { useMobile } from "@/lib/useMobile";
 
 const settingsTabs = ["ПОДКЛЮЧЕНИЯ", "УВЕДОМЛЕНИЯ", "РИСК-ПРОФИЛЬ", "ПОРТФЕЛЬ", "ДАННЫЕ", "АККАУНТ"];
 
@@ -28,6 +29,7 @@ const DEFAULT_NOTIFICATIONS = [
 const LS_NOTIFICATIONS = "dashboard-notifications";
 
 export default function SettingsPage() {
+  const isMobile = useMobile();
   const app = useApp();
   const [activeTab, setActiveTab] = useState("ПОДКЛЮЧЕНИЯ");
   const importRef = useRef<HTMLInputElement>(null);
@@ -257,7 +259,7 @@ export default function SettingsPage() {
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="НАСТРОЙКИ" subtitle="Управление подключениями, уведомлениями и параметрами" />
 
-      <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Tabs */}
         <div style={{ display: "flex", gap: 8 }}>
           {settingsTabs.map((t) => (
@@ -273,7 +275,7 @@ export default function SettingsPage() {
         {/* CONNECTIONS */}
         {activeTab === "ПОДКЛЮЧЕНИЯ" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 12 }}>
               {connectionList.map((c) => (
                 <div key={c.id} className="card" style={{ padding: 20 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>

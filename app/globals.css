@@ -255,3 +255,29 @@ body {
   .no-print { display: none !important; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ── Mobile utilities ─────────────────────────────────────────── */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 767px) {
+  /* Metric value font size on small screens */
+  .metric-value { font-size: 20px !important; }
+
+  /* Cards slightly smaller padding on mobile */
+  .card { padding: 12px !important; }
+
+  /* Tabs wrap on mobile */
+  .tab-btn { padding: 6px 10px; font-size: 11px; }
+
+  /* Auth page — full width on mobile */
+  #auth-card { width: 100% !important; max-width: 380px; }
+
+  /* Bottom nav safe area */
+  body { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* recharts: prevent overflow */
+  .recharts-wrapper { overflow: hidden !important; }
+}

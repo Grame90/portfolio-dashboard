@@ -7,6 +7,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from "recharts";
 import { useApp } from "@/lib/AppContext";
+import { useMobile } from "@/lib/useMobile";
 import { DIVIDEND_YIELDS, loadDividends, ReceivedDividend } from "@/app/overview/page";
 const periodOptions = ["1М", "3М", "6М", "YTD", "1Г", "ВСЕ"];
 
@@ -48,6 +49,7 @@ function CorrelationCell({ value }: { value: number }) {
 }
 
 export default function AnalyticsPage() {
+  const isMobile = useMobile();
   const app = useApp();
   const [period, setPeriod] = useState("YTD");
   const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[]; returns: number[] }>>({});
@@ -353,9 +355,9 @@ export default function AnalyticsPage() {
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="АНАЛИТИКА" subtitle="Глубокий анализ портфеля и рыночной среды" />
 
-      <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Top metrics */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(7, 1fr)", gap: 10 }}>
           {[
             { label: "Общая прибыль (USD)", value: `${app.totalPnl >= 0 ? "+" : ""}${Math.round(app.totalPnl).toLocaleString("en-US")}`, sub: `${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnl >= 0 ? "#22c55e" : "#ef4444" },
             { label: "Средняя доходность (YTD)", value: `${app.totalPnlPct >= 0 ? "+" : ""}${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnlPct >= 0 ? "#22c55e" : "#ef4444" },
@@ -374,7 +376,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Portfolio dynamics vs benchmarks */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr", gap: 12 }}>
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <div className="card-title" style={{ margin: 0 }}>Динамика портфеля</div>
@@ -469,7 +471,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Risk metrics + Stress + Drawdown + Factor */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Распределение по типам активов</div>
             <ResponsiveContainer width="100%" height={130}>
@@ -556,7 +558,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Dividends section */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr 1fr", gap: 12 }}>
           {/* Monthly bar chart */}
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -643,7 +645,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Drawdown chart */}
-        <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "0.8fr 1.2fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Распределение по рынкам</div>
             {marketDist.length === 0 ? (

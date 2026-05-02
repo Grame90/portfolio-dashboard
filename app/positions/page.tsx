@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
+import { useMobile } from "@/lib/useMobile";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -140,6 +141,7 @@ const TODAY = new Date().toISOString().slice(0, 10);
 const emptyForm = { ticker: "", name: "", type: "ETF", qty: "", avgPrice: "", currentPrice: "", previousClose: "", color: COLORS[0], purchaseDate: TODAY };
 
 export default function PositionsPage() {
+  const isMobile = useMobile();
   const [positions, setPositions] = useState<Position[]>([]);
   const [editingNameId, setEditingNameId] = useState<number | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
@@ -720,7 +722,7 @@ export default function PositionsPage() {
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="ПОЗИЦИИ" subtitle="Детализация всех активов портфеля" showSnapshot />
 
-      <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
 
         {/* Summary metrics — compact top bar, 8 cols × 2 rows */}
         {(() => {
@@ -743,7 +745,7 @@ export default function PositionsPage() {
             { label: "Кэш",             value: `${positions.filter(p => p.type === "Кэш").reduce((s, p) => s + p.share, 0).toFixed(1)}%`,   sub: `$${positions.filter(p => p.type === "Кэш").reduce((s, p) => s + p.value, 0).toLocaleString("en-US")}` },
           ];
           return (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(3, 1fr)" : "repeat(8, 1fr)", gap: 6 }}>
               {metrics.map((m) => (
                 <div key={m.label} className="card" style={{ padding: "8px 10px" }}>
                   <div style={{ fontSize: 9, color: "var(--text-secondary)", marginBottom: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.label}</div>
@@ -787,7 +789,7 @@ export default function PositionsPage() {
         {showForm && (
           <div className="card" style={{ padding: 18 }}>
             <div className="card-title">Новый инструмент</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
               <div style={{ position: "relative" }}>
                 <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>
                   Тикер *{searchLoading && <span style={{ marginLeft: 5, color: "var(--accent-light)" }}>…</span>}
@@ -845,7 +847,7 @@ export default function PositionsPage() {
         {showCashForm && (
           <div className="card" style={{ padding: 18 }}>
             <div className="card-title">Добавить кэш</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>Валюта *</div>
                 <select value={cashCurrency} onChange={e => {
@@ -892,7 +894,7 @@ export default function PositionsPage() {
         )}
 
         {/* Table + Portfolio structure */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 280px", gap: 12 }}>
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div className="card-title">Текущие позиции</div>

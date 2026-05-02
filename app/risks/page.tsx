@@ -8,6 +8,7 @@ import {
   CartesianGrid, ReferenceLine,
 } from "recharts";
 import { useApp } from "@/lib/AppContext";
+import { useMobile } from "@/lib/useMobile";
 
 // ── Drawdown series builders ───────────────────────────────────────────────
 // Historical 365-day path: cumulative return → peak-to-trough drawdown
@@ -119,6 +120,7 @@ const crisisStrategies = [
 ];
 
 export default function RisksPage() {
+  const isMobile = useMobile();
   const app = useApp();
   const positions = app.positions;
   const liveQuotes = app.liveQuotes;
@@ -353,7 +355,7 @@ export default function RisksPage() {
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="РИСКИ И ЗАЩИТА" subtitle="Управление рисками и стратегия защиты капитала" showSnapshot />
 
-      <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
 
         {isEmpty && (
           <div className="card" style={{ padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
@@ -363,7 +365,7 @@ export default function RisksPage() {
         )}
 
         {/* Row 1: Gauge + Categories + Metrics + Concentration + Drawdown */}
-        <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1fr 1fr 0.8fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "0.8fr 1fr 1fr 0.8fr 1fr", gap: 12 }}>
           <div className="card" style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
             <div className="card-title">Общая оценка риска</div>
             <RiskGauge value={riskScore} label={metrics?.riskLabel ?? ""} color={metrics?.riskColor ?? "#22c55e"} />
@@ -507,7 +509,7 @@ export default function RisksPage() {
         </div>
 
         {/* Row 2: Stress scenarios + Risk alerts + Hedging */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Стресс-сценарии (влияние на портфель)</div>
             <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
@@ -604,7 +606,7 @@ export default function RisksPage() {
         </div>
 
         {/* Row 3: Correlation + Drawdown analysis + VaR table */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1.2fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr 1.2fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Корреляционная матрица (топ позиции)</div>
             {!correlMatrix ? (
@@ -741,7 +743,7 @@ export default function RisksPage() {
         </div>
 
         {/* Row 4: High risk positions + Crisis strategies + Liquidity */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.8fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 0.8fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Позиции с повышенным риском</div>
             <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>

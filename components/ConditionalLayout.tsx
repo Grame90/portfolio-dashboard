@@ -4,11 +4,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { AppProvider, useApp } from "@/lib/AppContext";
+import { useMobile } from "@/lib/useMobile";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, authLoading } = useApp();
   const router = useRouter();
   const pathname = usePathname();
+  const isMobile = useMobile();
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -30,7 +32,20 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
-  return <>{children}</>;
+  return (
+    <div style={{ display: "flex", minHeight: "100vh" }}>
+      <Sidebar />
+      <main style={{
+        marginLeft: isMobile ? 0 : 72,
+        paddingBottom: isMobile ? 60 : 0,
+        flex: 1,
+        minHeight: "100vh",
+        overflow: "auto",
+      }}>
+        {children}
+      </main>
+    </div>
+  );
 }
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
@@ -48,12 +63,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   return (
     <AppProvider>
       <AuthGuard>
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-          <Sidebar />
-          <main style={{ marginLeft: 72, flex: 1, minHeight: "100vh", overflow: "auto" }}>
-            {children}
-          </main>
-        </div>
+        {children}
       </AuthGuard>
     </AppProvider>
   );

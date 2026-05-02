@@ -5,6 +5,7 @@ import Link from "next/link";
 import { RefreshCw, FileDown, Settings, MoreHorizontal, CheckCircle, Upload, Info } from "lucide-react";
 import { lastUpdated } from "@/lib/mockData";
 import { useApp } from "@/lib/AppContext";
+import { useMobile } from "@/lib/useMobile";
 
 interface PageHeaderProps {
   title: string;
@@ -14,6 +15,7 @@ interface PageHeaderProps {
 
 export default function PageHeader({ title, subtitle, showSnapshot = false }: PageHeaderProps) {
   const app = useApp();
+  const isMobile = useMobile();
   const [lastSnap, setLastSnap] = useState(lastUpdated);
   const [toast, setToast] = useState<string | null>(null);
   const [toastColor, setToastColor] = useState("#22c55e");
@@ -127,20 +129,22 @@ export default function PageHeader({ title, subtitle, showSnapshot = false }: Pa
 
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "16px 24px", borderBottom: "1px solid var(--border)",
+        padding: isMobile ? "12px 14px" : "16px 24px", borderBottom: "1px solid var(--border)",
         background: "var(--bg-secondary)", position: "sticky", top: 0, zIndex: 10,
       }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>{title}</h1>
-          <p style={{ margin: 0, fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{subtitle}</p>
+          <h1 style={{ margin: 0, fontSize: isMobile ? 16 : 22, fontWeight: 700, color: "var(--text-primary)" }}>{title}</h1>
+          {!isMobile && <p style={{ margin: 0, fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{subtitle}</p>}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            {showSnapshot ? `Последняя фиксация: ${lastSnap}` : `Последнее обновление: ${lastSnap}`}
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
+          {!isMobile && (
+            <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+              {showSnapshot ? `Последняя фиксация: ${lastSnap}` : `Последнее обновление: ${lastSnap}`}
+            </span>
+          )}
 
-          {showSnapshot && (
+          {showSnapshot && !isMobile && (
             <button
               onClick={handleSnapshot}
               disabled={snapLoading}
@@ -161,18 +165,22 @@ export default function PageHeader({ title, subtitle, showSnapshot = false }: Pa
           </button>
 
           {/* Save PDF */}
-          <button
-            onClick={handleSavePDF}
-            style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center" }}
-            title="Сохранить в PDF"
-          >
-            <FileDown size={16} />
-          </button>
+          {!isMobile && (
+            <button
+              onClick={handleSavePDF}
+              style={{ background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center" }}
+              title="Сохранить в PDF"
+            >
+              <FileDown size={16} />
+            </button>
+          )}
 
           {/* Settings */}
-          <Link href="/settings" style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center" }} title="Настройки">
-            <Settings size={16} />
-          </Link>
+          {!isMobile && (
+            <Link href="/settings" style={{ color: "var(--text-secondary)", display: "flex", alignItems: "center" }} title="Настройки">
+              <Settings size={16} />
+            </Link>
+          )}
 
           {/* More dropdown */}
           <div ref={moreRef} style={{ position: "relative" }}>

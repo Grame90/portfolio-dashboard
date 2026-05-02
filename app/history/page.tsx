@@ -11,6 +11,7 @@ import {
   portfolioHistory6M, portfolioHistory1Y, portfolioHistoryAll,
 } from "@/lib/mockData";
 import { useApp } from "@/lib/AppContext";
+import { useMobile } from "@/lib/useMobile";
 
 const TYPE_COLOR: Record<string, string> = {
   "Акция": "#7c3aed", "ETF": "#3b82f6", "Сырьё": "#f59e0b",
@@ -46,6 +47,7 @@ const FALLBACK_EVENTS: EventItem[] = (() => {
 })();
 
 export default function HistoryPage() {
+  const isMobile = useMobile();
   const app = useApp();
   const [cashFlowPeriod, setCashFlowPeriod] = useState("1М");
   const [histPeriod, setHistPeriod] = useState<"1M"|"3M"|"6M"|"YTD"|"1Y"|"ALL">("YTD");
@@ -379,9 +381,9 @@ export default function HistoryPage() {
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="ИСТОРИЯ" subtitle="История фиксаций, операций и изменения портфеля" showSnapshot />
 
-      <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Row 1: Capital dynamics + Summary + Distributions + Goal */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 0.8fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr 0.8fr", gap: 12 }}>
           {/* Capital Dynamics */}
           <div className="card" style={{ position: "relative", overflow: "hidden", padding: "18px 20px 14px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -559,7 +561,7 @@ export default function HistoryPage() {
         </div>
 
         {/* Row 2: Snapshot history + Operations + Recommended actions */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.8fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 0.8fr", gap: 12 }}>
           {/* Snapshots */}
           <div className="card">
             <div className="card-title">История фиксаций</div>
@@ -675,7 +677,7 @@ export default function HistoryPage() {
         </div>
 
         {/* Row 3: Events + Rebalance plan + Cash flow + Goals */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 0.8fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 0.8fr 1fr", gap: 12 }}>
           {/* Events */}
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>

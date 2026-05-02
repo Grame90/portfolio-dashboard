@@ -7,6 +7,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { useApp } from "@/lib/AppContext";
+import { useMobile } from "@/lib/useMobile";
 
 const TICKER_BETA: Record<string, number> = {
   BTC: 2.5, ETH: 2.8, SOL: 3.0, DOGE: 3.5, XRP: 2.2,
@@ -76,6 +77,7 @@ function CircleProgress({ value, size = 90, color = "#7c3aed" }: { value: number
 }
 
 export default function StrategyPage() {
+  const isMobile = useMobile();
   const app = useApp();
   const goalProgress = app.settings.targetAmount > 0
     ? Math.min(100, (app.portfolioTotal / app.settings.targetAmount) * 100)
@@ -272,9 +274,9 @@ export default function StrategyPage() {
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="СТРАТЕГИЯ И ПЛАН ДЕЙСТВИЙ" subtitle="Стратегия, правила, AI-решения и долгосрочный план" showSnapshot />
 
-      <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Row 1: Rating + Long-term goal + AI forecast + Goal probability */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.5fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1.5fr 1fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Стратегический рейтинг портфеля</div>
             {liveStrategyRating.categories.length === 0 ? (

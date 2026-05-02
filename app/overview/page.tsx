@@ -7,6 +7,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { useApp } from "@/lib/AppContext";
+import { useMobile } from "@/lib/useMobile";
 
 const periodOptions = ["7Д", "1М", "3М", "6М", "YTD", "1Г", "ВСЕ"];
 const LS_CHART = "portfolio-chart-history";
@@ -118,6 +119,7 @@ function MiniBarChart({ data, positive = true }: { data: { date: string; value: 
 }
 
 export default function OverviewPage() {
+  const isMobile = useMobile();
   const [period, setPeriod] = useState("1М");
   const app = useApp();
   const [history, setHistory] = useState<ChartPoint[]>([]);
@@ -427,9 +429,9 @@ export default function OverviewPage() {
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="ОБЗОР" subtitle="Главная сводка по портфелю" />
 
-      <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: isMobile ? "12px" : "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Row 1: Metrics cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr 1.1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1.4fr 1fr 1fr 1fr 1fr 1.1fr", gap: 10 }}>
           {/* Total */}
           <div className="card" style={{ borderLeft: "3px solid var(--accent)", background: "linear-gradient(135deg, var(--bg-card-hover), var(--bg-card))" }}>
             <div className="card-title">Общая стоимость портфеля</div>
@@ -505,7 +507,7 @@ export default function OverviewPage() {
         </div>
 
         {/* Dividends row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
           {/* Annual dividend income */}
           <div className="card">
             <div className="card-title">Дивидендный доход</div>
@@ -592,7 +594,7 @@ export default function OverviewPage() {
         </div>
 
         {/* Row 2: Distribution + Dynamics + Currency + Key indicators */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr 1fr 1fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Распределение активов</div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -781,7 +783,7 @@ export default function OverviewPage() {
         </div>
 
         {/* Row 3: Leaders + Sectors + Risk gauge */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 12 }}>
           <div className="card">
             <div className="card-title">Лидеры роста сегодня</div>
             {!quotesLoaded ? (
@@ -887,7 +889,7 @@ export default function OverviewPage() {
         </div>
 
         {/* Row 4: Structure table + Rebalance + Summary stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 0.8fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 0.8fr 1fr", gap: 12 }}>
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <div className="card-title" style={{ margin: 0 }}>Текущая структура VS целевая</div>
@@ -978,7 +980,7 @@ export default function OverviewPage() {
       </div>
 
       {/* Long-term strategy */}
-      <div style={{ padding: "0 24px 16px" }}>
+      <div style={{ padding: isMobile ? "0 12px 12px" : "0 24px 16px" }}>
         <div className="card">
           <div style={{ display: "flex", gap: 24 }}>
             <div style={{ flex: 1 }}>

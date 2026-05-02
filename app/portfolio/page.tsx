@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
+import { useMobile } from "@/lib/useMobile";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, ReferenceLine, CartesianGrid,
@@ -134,6 +135,7 @@ function periodCutoff(period: string): string {
 function fmtDate(iso: string): string { const [,m,day] = iso.split("-"); return `${day}.${m}`; }
 
 export default function PortfolioPage() {
+  const isMobile = useMobile();
   const [period, setPeriod] = useState("1М");
   const [history, setHistory] = useState<ChartPoint[]>([]);
   const [positions, setPositions] = useState<LivePosition[]>([]);
@@ -486,9 +488,9 @@ export default function PortfolioPage() {
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="ПОРТФЕЛЬ" subtitle="Главная сводка и управление портфелем" showSnapshot />
 
-      <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ padding: isMobile ? "12px" : "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Row 1: Summary */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr 1.2fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1.5fr 1.2fr 1fr 1fr", gap: 12 }}>
           {/* Total */}
           <div className="card">
             <div className="card-title">Общая стоимость портфеля</div>
@@ -627,7 +629,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Row 2: Positions table + Target structure */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 320px", gap: 12 }}>
           <div className="card">
             {/* Table header with status + column picker */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -1002,7 +1004,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Row 3: Buy ladder + Triggers + Snapshots */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
           {(() => {
             const allTickers = positions.filter(p => p.type !== "Кэш");
             const selectedPositions = allTickers.filter(p => ladderTickers.includes(p.ticker));
@@ -1304,7 +1306,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* Row 4: Chart + Pie + Stress + Recent actions */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr 0.8fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr 0.8fr", gap: 12 }}>
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
               <div>

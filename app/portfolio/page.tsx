@@ -630,46 +630,48 @@ export default function PortfolioPage() {
 
         {/* Row 2: Positions table + Target structure */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 320px", gap: 12 }}>
-          <div className="card">
+          <div className="card" style={{ minWidth: 0 }}>
             {/* Table header with status + column picker */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
               <div className="card-title" style={{ marginBottom: 0 }}>Текущие позиции</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: isMobile ? 4 : 8, alignItems: "center" }}>
                 <span style={{
-                  fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 4,
+                  fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4,
                   background: quoteStatus === "ok" ? "rgba(34,197,94,0.12)" : quoteStatus === "error" ? "rgba(239,68,68,0.12)" : "rgba(124,58,237,0.12)",
                   color: quoteStatus === "ok" ? "#22c55e" : quoteStatus === "error" ? "#ef4444" : "var(--accent-light)",
                 }}>
-                  {quoteStatus === "ok" ? "Finnhub ✓" : quoteStatus === "loading" ? "Обновление…" : quoteStatus === "error" ? "Ошибка API" : "Ожидание…"}
+                  {quoteStatus === "ok" ? "✓" : quoteStatus === "loading" ? "…" : quoteStatus === "error" ? "✗" : "–"}
                 </span>
 
-                {/* Save column order */}
-                <button
-                  onClick={saveColView}
-                  style={{
-                    fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 6, cursor: "pointer",
-                    background: colOrderSaved ? "rgba(34,197,94,0.15)" : "var(--bg-secondary)",
-                    border: `1px solid ${colOrderSaved ? "#22c55e" : "var(--border)"}`,
-                    color: colOrderSaved ? "#22c55e" : "var(--text-secondary)",
-                    transition: "all 0.2s",
-                    whiteSpace: "nowrap",
-                  }}
-                  title="Сохранить текущее расположение столбцов"
-                >
-                  {colOrderSaved ? "✓ Сохранено" : "💾 Сохранить вид"}
-                </button>
+                {/* Save column order — hidden on mobile */}
+                {!isMobile && (
+                  <button
+                    onClick={saveColView}
+                    style={{
+                      fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 6, cursor: "pointer",
+                      background: colOrderSaved ? "rgba(34,197,94,0.15)" : "var(--bg-secondary)",
+                      border: `1px solid ${colOrderSaved ? "#22c55e" : "var(--border)"}`,
+                      color: colOrderSaved ? "#22c55e" : "var(--text-secondary)",
+                      transition: "all 0.2s",
+                      whiteSpace: "nowrap",
+                    }}
+                    title="Сохранить текущее расположение столбцов"
+                  >
+                    {colOrderSaved ? "✓ Сохранено" : "💾 Сохранить вид"}
+                  </button>
+                )}
 
                 {/* Column picker */}
                 <div style={{ position: "relative" }}>
                   <button
                     onClick={() => setColPickerOpen((o) => !o)}
                     style={{
-                      fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 6, cursor: "pointer",
+                      fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
                       background: colPickerOpen ? "var(--accent)" : "var(--bg-secondary)",
                       border: "1px solid var(--border)", color: colPickerOpen ? "white" : "var(--text-secondary)",
                     }}
                   >
-                    ⚙ Столбцы
+                    {isMobile ? "⚙" : "⚙ Столбцы"}
                   </button>
 
                   {colPickerOpen && (

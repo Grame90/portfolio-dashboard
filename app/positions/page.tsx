@@ -758,11 +758,11 @@ export default function PositionsPage() {
         })()}
 
         {/* Tabs + Add button */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 8 : 0 }}>
+          <div style={{ display: "flex", gap: isMobile ? 4 : 8, flexWrap: "wrap" }}>
             {tabs.map((t) => (
               <button key={t} onClick={() => setActiveTab(t)} style={{
-                padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
+                padding: isMobile ? "6px 10px" : "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: isMobile ? 11 : 12, fontWeight: 600,
                 background: activeTab === t ? "var(--accent)" : "var(--bg-card)",
                 color: activeTab === t ? "white" : "var(--text-secondary)", transition: "all 0.15s",
               }}>{t}</button>
@@ -770,16 +770,16 @@ export default function PositionsPage() {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => { setShowForm(!showForm); setShowCashForm(false); setFormError(""); }} style={{
-              padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600,
+              padding: isMobile ? "6px 12px" : "8px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: isMobile ? 11 : 12, fontWeight: 600,
               background: showForm ? "var(--bg-card)" : "var(--accent)", color: showForm ? "var(--text-secondary)" : "white",
             }}>
-              {showForm ? "✕ Отмена" : "+ Добавить инструмент"}
+              {showForm ? "✕" : isMobile ? "+ Добавить" : "+ Добавить инструмент"}
             </button>
             <button onClick={() => { setShowCashForm(!showCashForm); setShowForm(false); setFormError(""); setCashCurrency("USD"); setCashRate("1"); }} style={{
-              padding: "8px 20px", borderRadius: 8, border: `1px solid var(--border)`, cursor: "pointer", fontSize: 12, fontWeight: 600,
+              padding: isMobile ? "6px 12px" : "8px 20px", borderRadius: 8, border: `1px solid var(--border)`, cursor: "pointer", fontSize: isMobile ? 11 : 12, fontWeight: 600,
               background: showCashForm ? "var(--bg-card)" : "transparent", color: showCashForm ? "var(--text-secondary)" : "var(--text-secondary)",
             }}>
-              {showCashForm ? "✕ Отмена" : "💰 Добавить кэш"}
+              {showCashForm ? "✕" : isMobile ? "💰 Кэш" : "💰 Добавить кэш"}
             </button>
           </div>
         </div>
@@ -895,7 +895,7 @@ export default function PositionsPage() {
 
         {/* Table + Portfolio structure */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 280px", gap: 12 }}>
-          <div className="card">
+          <div className="card" style={{ minWidth: 0 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div className="card-title">Текущие позиции</div>
               <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11 }}>
@@ -1085,7 +1085,7 @@ export default function PositionsPage() {
         </div>
 
         {/* Charts row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 12 }}>
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Portfolio value — period selector */}
             <div>

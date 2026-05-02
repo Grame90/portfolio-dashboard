@@ -40,7 +40,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
         paddingBottom: isMobile ? 60 : 0,
         flex: 1,
         minHeight: "100vh",
-        overflow: "auto",
+        overflowY: "auto",
+        overflowX: isMobile ? "hidden" : "auto",
+        maxWidth: isMobile ? "100vw" : undefined,
       }}>
         {children}
       </main>

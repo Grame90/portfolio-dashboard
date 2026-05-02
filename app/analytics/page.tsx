@@ -378,9 +378,9 @@ export default function AnalyticsPage() {
         {/* Portfolio dynamics vs benchmarks */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr", gap: 12 }}>
           <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 6 : 0, marginBottom: 8 }}>
               <div className="card-title" style={{ margin: 0 }}>Динамика портфеля</div>
-              <div style={{ display: "flex", gap: 4 }}>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {periodOptions.map((p) => (
                   <button key={p} className={`tab-btn ${period === p ? "active" : ""}`} onClick={() => setPeriod(p)} style={{ fontSize: 10, padding: "3px 7px" }}>
                     {p}
@@ -388,12 +388,12 @@ export default function AnalyticsPage() {
                 ))}
               </div>
             </div>
-            <div style={{ display: "flex", gap: 12, marginBottom: 8 }}>
+            <div style={{ display: "flex", gap: isMobile ? 8 : 12, marginBottom: 8, flexWrap: "wrap" }}>
               {[
                 { label: "Портфель", color: "#7c3aed", value: portfolioReturn ?? "–" },
-                { label: "S&P 500 (SPY)", color: "#22c55e", value: portfolioChartData.length ? `${(portfolioChartData[portfolioChartData.length - 1]?.sp500 ?? 0).toFixed(2)}%` : "–" },
-                { label: "NASDAQ 100 (QQQ)", color: "#3b82f6", value: portfolioChartData.length ? `${(portfolioChartData[portfolioChartData.length - 1]?.nasdaq ?? 0).toFixed(2)}%` : "–" },
-                { label: "Золото (GLD)", color: "#f59e0b", value: portfolioChartData.length ? `${(portfolioChartData[portfolioChartData.length - 1]?.gold ?? 0).toFixed(2)}%` : "–" },
+                { label: "S&P 500", color: "#22c55e", value: portfolioChartData.length ? `${(portfolioChartData[portfolioChartData.length - 1]?.sp500 ?? 0).toFixed(2)}%` : "–" },
+                { label: "NASDAQ", color: "#3b82f6", value: portfolioChartData.length ? `${(portfolioChartData[portfolioChartData.length - 1]?.nasdaq ?? 0).toFixed(2)}%` : "–" },
+                { label: "Золото", color: "#f59e0b", value: portfolioChartData.length ? `${(portfolioChartData[portfolioChartData.length - 1]?.gold ?? 0).toFixed(2)}%` : "–" },
               ].map((b) => (
                 <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
                   <span style={{ width: 12, height: 2, background: b.color, display: "inline-block" }} />
@@ -494,25 +494,25 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="card">
-            <div className="card-title">Анализ риска (риск-метрики)</div>
+            <div className="card-title">Анализ риска</div>
             {[
-              { label: "Value at Risk (1д, 95%)", value: `${liveVar1d}%`, level: liveVar1d < 2 ? "Низкий" : "Умеренный", color: liveVar1d < 2 ? "#22c55e" : "#f59e0b" },
-              { label: "Value at Risk (10д, 95%)", value: `${liveVar10d}%`, level: liveVar10d < 7 ? "Умеренный" : "Высокий", color: liveVar10d < 7 ? "#f59e0b" : "#ef4444" },
-              { label: "Expected Shortfall (95%)", value: `${liveEs}%`, level: liveEs < 3 ? "Низкий" : "Умеренный", color: liveEs < 3 ? "#22c55e" : "#f59e0b" },
-              { label: "Волатильность (30 дней)", value: `${liveVol30d}%`, level: "Умеренный", color: "#f59e0b" },
-              { label: "Концентрация (топ 3 поз.)", value: `${liveConcentration}%`, level: liveConcentration > 60 ? "Высокий" : "Умеренный", color: liveConcentration > 60 ? "#ef4444" : "#f59e0b" },
-              { label: "Леверидж портфеля", value: "1.00x", level: "Низкий", color: "#22c55e" },
+              { label: "VaR (1д, 95%)", value: `${liveVar1d}%`, level: liveVar1d < 2 ? "Низкий" : "Умеренный", color: liveVar1d < 2 ? "#22c55e" : "#f59e0b" },
+              { label: "VaR (10д, 95%)", value: `${liveVar10d}%`, level: liveVar10d < 7 ? "Умеренный" : "Высокий", color: liveVar10d < 7 ? "#f59e0b" : "#ef4444" },
+              { label: "Exp. Shortfall", value: `${liveEs}%`, level: liveEs < 3 ? "Низкий" : "Умеренный", color: liveEs < 3 ? "#22c55e" : "#f59e0b" },
+              { label: "Волатильность", value: `${liveVol30d}%`, level: "Умеренный", color: "#f59e0b" },
+              { label: "Концентрация", value: `${liveConcentration}%`, level: liveConcentration > 60 ? "Высокий" : "Умеренный", color: liveConcentration > 60 ? "#ef4444" : "#f59e0b" },
+              { label: "Леверидж", value: "1.00x", level: "Низкий", color: "#22c55e" },
             ].map((m) => (
-              <div key={m.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, fontSize: 12 }}>
-                <div>
-                  <div style={{ color: "var(--text-secondary)" }}>{m.label}</div>
-                  <div className="progress-bar" style={{ marginTop: 3, width: 120 }}>
-                    <div className="progress-fill" style={{ width: `${Math.abs(parseFloat(m.value)) * 5}%`, background: m.color }} />
+              <div key={m.label} style={{ marginBottom: 8, fontSize: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                  <span style={{ color: "var(--text-secondary)", fontSize: isMobile ? 10 : 12 }}>{m.label}</span>
+                  <div style={{ textAlign: "right" }}>
+                    <span style={{ fontWeight: 700, color: m.color, fontSize: isMobile ? 11 : 12 }}>{m.value}</span>
+                    <span style={{ fontSize: 9, color: m.color, marginLeft: 4 }}>{m.level}</span>
                   </div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 700, color: m.color }}>{m.value}</div>
-                  <div style={{ fontSize: 10, color: m.color }}>{m.level}</div>
+                <div className="progress-bar" style={{ width: "100%" }}>
+                  <div className="progress-fill" style={{ width: `${Math.abs(parseFloat(m.value)) * 5}%`, background: m.color }} />
                 </div>
               </div>
             ))}

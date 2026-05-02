@@ -6,15 +6,8 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area,
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from "recharts";
-import {
-  getBenchmarkChartData,
-  stressScenarios,
-  factorExposure,
-} from "@/lib/mockData";
 import { useApp } from "@/lib/AppContext";
 import { DIVIDEND_YIELDS, loadDividends, ReceivedDividend } from "@/app/overview/page";
-
-const benchmarkData = getBenchmarkChartData();
 const periodOptions = ["1М", "3М", "6М", "YTD", "1Г", "ВСЕ"];
 
 const TICKER_BETA_A: Record<string, number> = {
@@ -57,7 +50,7 @@ function CorrelationCell({ value }: { value: number }) {
 export default function AnalyticsPage() {
   const app = useApp();
   const [period, setPeriod] = useState("YTD");
-  const [histData, setHistData] = useState<Record<string, { returns: number[] }>>({});
+  const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[]; returns: number[] }>>({});
   const [histLoading, setHistLoading] = useState(false);
   const [receivedDividends, setReceivedDividends] = useState<ReceivedDividend[]>([]);
   const [history, setHistory] = useState<{ date: string; value: number; cost: number }[]>([]);
@@ -125,7 +118,8 @@ export default function AnalyticsPage() {
   }, [app.positions, app.liveQuotes, app.portfolioTotal]);
 
   const liveCorrelation = useMemo(() => {
-    const tickers = Object.keys(histData).filter(t => histData[t].returns.length > 10);
+    const benchmarks = new Set(["SPY", "QQQ", "GLD"]);
+    const tickers = Object.keys(histData).filter(t => !benchmarks.has(t) && histData[t].returns.length > 10);
     if (tickers.length < 2) return null;
     const matrix = tickers.map((ta) =>
       tickers.map((tb) => {
@@ -175,24 +169,47 @@ export default function AnalyticsPage() {
       .sort((a, b) => b.value - a.value);
   }, [app.positions, app.liveQuotes]);
 
-  const portfolioChartData = useMemo(() => {
-    const bm = period === "1М" ? benchmarkData.slice(-30) :
-      period === "3М" ? benchmarkData.slice(-90) :
-      period === "6М" ? benchmarkData.slice(-120) : benchmarkData;
-    const filtered = period === "1М" ? history.slice(-30) :
-      period === "3М" ? history.slice(-90) :
-      period === "6М" ? history.slice(-180) :
-      period === "1Г" ? history.slice(-365) : history;
-    if (!filtered.length) return bm;
-    const base = filtered[0].value;
-    return filtered.map((h, i) => ({
-      date: h.date.slice(5),
-      portfolio: parseFloat(((h.value / base - 1) * 100).toFixed(2)),
-      sp500: bm[Math.round(i * (bm.length - 1) / Math.max(filtered.length - 1, 1))]?.sp500 ?? 0,
-      nasdaq: bm[Math.round(i * (bm.length - 1) / Math.max(filtered.length - 1, 1))]?.nasdaq ?? 0,
-      gold: bm[Math.round(i * (bm.length - 1) / Math.max(filtered.length - 1, 1))]?.gold ?? 0,
+  const bmHistory = useMemo(() => {
+    const spy = histData["SPY"];
+    if (!spy?.closes?.length) return [];
+    const qqq = histData["QQQ"];
+    const gld = histData["GLD"];
+    const baseS = spy.closes[0];
+    const baseQ = qqq?.closes[0] ?? 1;
+    const baseG = gld?.closes[0] ?? 1;
+    return spy.dates.map((date, i) => ({
+      date,
+      sp500: parseFloat(((spy.closes[i] / baseS - 1) * 100).toFixed(2)),
+      nasdaq: qqq ? parseFloat(((qqq.closes[Math.min(i, qqq.closes.length - 1)] / baseQ - 1) * 100).toFixed(2)) : 0,
+      gold: gld ? parseFloat(((gld.closes[Math.min(i, gld.closes.length - 1)] / baseG - 1) * 100).toFixed(2)) : 0,
     }));
-  }, [history, period]);
+  }, [histData]);
+
+  const portfolioChartData = useMemo(() => {
+    const cutoff = period === "1М" ? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10) :
+      period === "3М" ? new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10) :
+      period === "6М" ? new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10) :
+      period === "1Г" ? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10) :
+      period === "YTD" ? `${new Date().getFullYear()}-01-01` : "0000-00-00";
+    const filtered = history.filter(h => h.date >= cutoff);
+    const filteredBm = bmHistory.filter(b => b.date >= cutoff);
+    if (!filtered.length) return filteredBm.map(b => ({ date: b.date.slice(5), portfolio: 0, sp500: b.sp500, nasdaq: b.nasdaq, gold: b.gold }));
+    const base = filtered[0].value;
+    const baseSpy = filteredBm[0]?.sp500 ?? 0;
+    const baseQqq = filteredBm[0]?.nasdaq ?? 0;
+    const baseGld = filteredBm[0]?.gold ?? 0;
+    return filtered.map((h, i) => {
+      const bmIdx = filteredBm.length > 1 ? Math.round(i * (filteredBm.length - 1) / Math.max(filtered.length - 1, 1)) : 0;
+      const bm = filteredBm[bmIdx];
+      return {
+        date: h.date.slice(5),
+        portfolio: parseFloat(((h.value / base - 1) * 100).toFixed(2)),
+        sp500: bm ? parseFloat((bm.sp500 - baseSpy).toFixed(2)) : 0,
+        nasdaq: bm ? parseFloat((bm.nasdaq - baseQqq).toFixed(2)) : 0,
+        gold: bm ? parseFloat((bm.gold - baseGld).toFixed(2)) : 0,
+      };
+    });
+  }, [history, period, bmHistory]);
 
   const portfolioReturn = useMemo(() => {
     const filtered = period === "1М" ? history.slice(-30) :
@@ -205,17 +222,18 @@ export default function AnalyticsPage() {
   }, [history, period]);
 
   useEffect(() => {
-    const tickers = app.positions.filter(p => p.type !== "Кэш" && p.type !== "Крипто").map(p => p.ticker);
-    if (!tickers.length) return;
+    const posTickers = app.positions.filter(p => p.type !== "Кэш" && p.type !== "Крипто").map(p => p.ticker);
+    const allTickers = [...new Set([...posTickers, "SPY", "QQQ", "GLD"])];
     setHistLoading(true);
-    fetch(`/api/historical?tickers=${tickers.join(",")}&days=60`)
+    fetch(`/api/historical?tickers=${allTickers.join(",")}&days=365`)
       .then(r => r.json())
-      .then((d: Record<string, { returns: number[] }>) => { setHistData(d); setHistLoading(false); })
+      .then((d: Record<string, { dates: string[]; closes: number[]; returns: number[] }>) => { setHistData(d); setHistLoading(false); })
       .catch(() => setHistLoading(false));
   }, [app.positions]);
 
   const analyticsMetrics = (() => {
-    const allReturns: number[][] = Object.values(histData).map(d => d.returns).filter(r => r.length > 5);
+    const benchmarks = new Set(["SPY", "QQQ", "GLD"]);
+    const allReturns: number[][] = Object.entries(histData).filter(([t]) => !benchmarks.has(t)).map(([, d]) => d.returns).filter(r => r.length > 5);
     if (!allReturns.length) return null;
     const minLen = Math.min(...allReturns.map(r => r.length));
     const portReturns = Array.from({ length: minLen }, (_, i) =>
@@ -245,6 +263,91 @@ export default function AnalyticsPage() {
   const top3Sum = [...app.positions].map(p => p.qty * (app.liveQuotes[p.ticker]?.current || p.avgPrice)).sort((a, b) => b - a).slice(0, 3).reduce((s, v) => s + v, 0);
   const liveConcentration = app.portfolioTotal > 0 ? parseFloat((top3Sum / app.portfolioTotal * 100).toFixed(1)) : 0;
   const betaSub = weightedBeta > 1.15 ? "Выше рынка" : weightedBeta < 0.85 ? "Ниже рынка" : "На уровне рынка";
+
+  const liveStressScenarios = useMemo(() => {
+    const total = app.portfolioTotal;
+    if (total <= 0) return [];
+    const cryptoW = app.positions.filter(p => p.type === "Крипто")
+      .reduce((s, p) => s + p.qty * (app.liveQuotes[p.ticker]?.current || p.avgPrice), 0) / total;
+    const techW = app.positions.filter(p => ["ETF","Акция"].includes(p.type) && !["GLD","SLV","IAU"].includes(p.ticker))
+      .reduce((s, p) => s + p.qty * (app.liveQuotes[p.ticker]?.current || p.avgPrice), 0) / total;
+    const scenarios = [
+      { scenario: "Финансовый кризис (2008)", pct: -(weightedBeta * 35 + cryptoW * 30) },
+      { scenario: "Пандемия (COVID-19)",       pct: -(weightedBeta * 22 + cryptoW * 25) },
+      { scenario: "Инфляционный шок",           pct: -(techW * 15 + 5) },
+      { scenario: "Рецессия (мягкая)",           pct: -(weightedBeta * 8) },
+      { scenario: "Рост ставок (+2%)",           pct: -(weightedBeta * 6) },
+      { scenario: "Геополитический кризис",      pct: -(weightedBeta * 5 + cryptoW * 10) },
+      { scenario: "Бычий сценарий",              pct: weightedBeta * 18 + cryptoW * 15 },
+    ];
+    return scenarios.map(s => ({
+      scenario: s.scenario,
+      lossPct: Math.round(s.pct * 10) / 10,
+      lossUsd: Math.round(total * s.pct / 100),
+      probability: Math.abs(s.pct) < 7 ? "Высокая" : Math.abs(s.pct) < 20 ? "Средняя" : "Низкая",
+    }));
+  }, [app.positions, app.liveQuotes, app.portfolioTotal, weightedBeta]);
+
+  const liveFactorExposure = useMemo(() => {
+    if (!app.portfolioTotal) return [
+      { factor: "Market (Рынок)", value: 0.85 },
+      { factor: "Size (Размер)", value: 0.35 },
+      { factor: "Value (Стоимость)", value: 0.30 },
+      { factor: "Growth (Рост)", value: 0.55 },
+      { factor: "Quality (Качество)", value: 0.55 },
+      { factor: "Momentum (Моментум)", value: 0.45 },
+      { factor: "Low Volatility", value: 0.25 },
+    ];
+    const FACTORS: Record<string, { market?: number; growth?: number; value?: number; quality?: number; momentum?: number; lowVol?: number; size?: number }> = {
+      TSLA: { market: 0.9, growth: 0.95, quality: 0.5, momentum: 0.7 },
+      NVDA: { market: 0.95, growth: 0.92, quality: 0.7, momentum: 0.88 },
+      META: { market: 0.9, growth: 0.82, quality: 0.75, momentum: 0.72 },
+      AMZN: { market: 0.88, growth: 0.78, quality: 0.72 },
+      GOOGL: { market: 0.88, growth: 0.72, quality: 0.78 },
+      MSFT: { market: 0.88, growth: 0.65, quality: 0.88, momentum: 0.6 },
+      AAPL: { market: 0.88, growth: 0.55, quality: 0.85, momentum: 0.55 },
+      QQQ:  { market: 1.0, growth: 0.72, momentum: 0.65 },
+      SPY:  { market: 1.0, value: 0.45, quality: 0.6, size: 0.3 },
+      VOO:  { market: 1.0, value: 0.45, quality: 0.6, size: 0.3 },
+      VTI:  { market: 1.0, value: 0.45, quality: 0.6, size: 0.5 },
+      SMH:  { market: 0.95, growth: 0.85, momentum: 0.78 },
+      SOXX: { market: 0.95, growth: 0.82, momentum: 0.75 },
+      ARKK: { market: 0.9, growth: 0.95, momentum: 0.8 },
+      "BRK.B": { market: 0.85, value: 0.82, quality: 0.88, lowVol: 0.55 },
+      JPM:  { market: 0.88, value: 0.72, quality: 0.7 },
+      KO:   { market: 0.6, value: 0.78, quality: 0.8, lowVol: 0.72 },
+      JNJ:  { market: 0.6, value: 0.65, quality: 0.85, lowVol: 0.7 },
+      GLD:  { market: 0.1, lowVol: 0.3 },
+      SLV:  { market: 0.15, lowVol: 0.2 },
+      IAU:  { market: 0.1, lowVol: 0.3 },
+      BTC:  { market: 0.3, growth: 0.7, momentum: 0.75 },
+      ETH:  { market: 0.3, growth: 0.75, momentum: 0.7 },
+    };
+    const totals = { market: 0, growth: 0, value: 0, quality: 0, momentum: 0, lowVol: 0, size: 0 };
+    app.positions.forEach(p => {
+      if (p.type === "Кэш") return;
+      const val = p.qty * (app.liveQuotes[p.ticker]?.current || p.avgPrice);
+      const w = val / app.portfolioTotal;
+      const f = FACTORS[p.ticker] ?? {};
+      const isCrypto = p.type === "Крипто";
+      totals.market   += (f.market   ?? (isCrypto ? 0.3 : 0.85)) * w;
+      totals.growth   += (f.growth   ?? (isCrypto ? 0.6 : p.type === "Акция" ? 0.55 : 0.4)) * w;
+      totals.value    += (f.value    ?? (p.type === "Акция" ? 0.3 : 0.2)) * w;
+      totals.quality  += (f.quality  ?? 0.5) * w;
+      totals.momentum += (f.momentum ?? 0.45) * w;
+      totals.lowVol   += (f.lowVol   ?? (isCrypto ? 0.0 : 0.3)) * w;
+      totals.size     += (f.size     ?? (p.type === "ETF" ? 0.3 : 0.5)) * w;
+    });
+    return [
+      { factor: "Market (Рынок)", value: Math.round(totals.market * 100) / 100 },
+      { factor: "Size (Размер)", value: Math.round(totals.size * 100) / 100 },
+      { factor: "Value (Стоимость)", value: Math.round(totals.value * 100) / 100 },
+      { factor: "Growth (Рост)", value: Math.round(totals.growth * 100) / 100 },
+      { factor: "Quality (Качество)", value: Math.round(totals.quality * 100) / 100 },
+      { factor: "Momentum (Моментум)", value: Math.round(totals.momentum * 100) / 100 },
+      { factor: "Low Volatility", value: Math.round(totals.lowVol * 100) / 100 },
+    ];
+  }, [app.positions, app.liveQuotes, app.portfolioTotal]);
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -424,7 +527,7 @@ export default function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {stressScenarios.map((s) => (
+                {liveStressScenarios.map((s) => (
                   <tr key={s.scenario} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "6px", color: "var(--text-secondary)", fontSize: 10 }}>{s.scenario.split("(")[0].trim()}</td>
                     <td style={{ padding: "6px", textAlign: "right", color: s.lossPct >= 0 ? "#22c55e" : "#ef4444", fontWeight: 600 }}>
@@ -442,7 +545,7 @@ export default function AnalyticsPage() {
           <div className="card">
             <div className="card-title">Факторный анализ (Exposure)</div>
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={factorExposure} layout="vertical" barSize={10}>
+              <BarChart data={liveFactorExposure} layout="vertical" barSize={10}>
                 <XAxis type="number" domain={[0, 1]} tick={{ fontSize: 9, fill: "#555577" }} tickLine={false} axisLine={false} />
                 <YAxis type="category" dataKey="factor" tick={{ fontSize: 9, fill: "#aaaacc" }} tickLine={false} axisLine={false} width={100} />
                 <Tooltip contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", fontSize: 11 }} />

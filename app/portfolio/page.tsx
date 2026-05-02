@@ -6,9 +6,6 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, ReferenceLine, CartesianGrid,
 } from "recharts";
-import {
-  stressScenarios, triggers as triggerData, triggerAlerts,
-} from "@/lib/mockData";
 
 type LivePosition = {
   id: number; ticker: string; name: string; type: string;
@@ -331,6 +328,16 @@ export default function PortfolioPage() {
   const dailyChangePct = prevTotal > 0 ? ((portfolioTotal - prevTotal) / prevTotal) * 100 : 0;
   const offTargetCount = positions.filter((p) => p.targetShare > 0 && Math.abs(p.share - p.targetShare) > 5).length;
 
+  // User-defined triggers loaded from localStorage (empty by default)
+  const triggerData: Array<{
+    id: number; ticker: string; name: string; type: string;
+    condition: string; currentValue: string; targetValue: string;
+    priority: string; status: string; lastTriggered: string | null; color: string;
+  }> = [];
+
+  // No fake hardcoded alerts — only real user-triggered ones
+  const triggerAlerts: Array<{ id: number; ticker: string; message: string; time: string; severity: string; read: boolean }> = [];
+
   // Evaluate each trigger against live prices
   const evaluatedTriggers = triggerData.map((t) => {
     if (t.status === "Неактивен") return { ...t, liveValue: t.currentValue, fired: false, progress: 0 };
@@ -456,6 +463,19 @@ export default function PortfolioPage() {
     if (n >= 4) return "Средняя";
     return "Низкая";
   }, [positions]);
+
+  const liveStressScenarios = useMemo(() => {
+    if (portfolioTotal <= 0) return [];
+    const beta = weightedBeta;
+    const cryptoW = positions.filter(p => p.type === "Крипто").reduce((s, p) => s + p.value, 0) / portfolioTotal;
+    return [
+      { scenario: "Финансовый кризис (2008)", lossUsd: Math.round(portfolioTotal * -(beta * 35 + cryptoW * 30) / 100), lossPct: -(Math.round((beta * 35 + cryptoW * 30) * 10) / 10) },
+      { scenario: "Пандемия (COVID-19)",       lossUsd: Math.round(portfolioTotal * -(beta * 22 + cryptoW * 25) / 100), lossPct: -(Math.round((beta * 22 + cryptoW * 25) * 10) / 10) },
+      { scenario: "Инфляционный шок",           lossUsd: Math.round(portfolioTotal * -((1 - cryptoW) * 12 + 4) / 100), lossPct: -(Math.round(((1 - cryptoW) * 12 + 4) * 10) / 10) },
+      { scenario: "Рецессия (мягкая)",           lossUsd: Math.round(portfolioTotal * -(beta * 8) / 100), lossPct: -(Math.round(beta * 80) / 10) },
+      { scenario: "Бычий сценарий",              lossUsd: Math.round(portfolioTotal * (beta * 18 + cryptoW * 15) / 100), lossPct: Math.round((beta * 18 + cryptoW * 15) * 10) / 10 },
+    ];
+  }, [portfolioTotal, weightedBeta, positions]);
 
   const recentActions = useMemo(() =>
     liveSnapshots.slice(0, 5).map(s => ({ date: `${s.date} ${s.time}`, action: s.comment })),
@@ -1405,7 +1425,7 @@ export default function PortfolioPage() {
                 </tr>
               </thead>
               <tbody>
-                {stressScenarios.slice(0, 5).map((s) => (
+                {liveStressScenarios.map((s) => (
                   <tr key={s.scenario} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "6px", color: "var(--text-secondary)" }}>{s.scenario.split("(")[0].trim()}</td>
                     <td style={{ padding: "6px", textAlign: "right", color: s.lossUsd >= 0 ? "#22c55e" : "#ef4444" }}>

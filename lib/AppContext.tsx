@@ -159,10 +159,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setPositions(readPositions());
     setSettings(readSettings());
 
+    const authTimeout = setTimeout(() => setAuthLoading(false), 4000);
+
     supabase.auth.getUser().then(({ data: { user: u } }) => {
+      clearTimeout(authTimeout);
       setUser(u);
       if (u) loadFromCloud(u.id).finally(() => setAuthLoading(false));
       else setAuthLoading(false);
+    }).catch(() => {
+      clearTimeout(authTimeout);
+      setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {

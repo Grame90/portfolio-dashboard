@@ -2,14 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import PageHeader from "@/components/PageHeader";
-import {
-  AreaChart, Area, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-} from "recharts";
-import {
-  portfolioHistoryYTD, portfolioHistory1M, portfolioHistory3M,
-  portfolioHistory6M, portfolioHistory1Y, portfolioHistoryAll,
-} from "@/lib/mockData";
+import ApexChart from "@/components/ApexChart";
 import { useApp } from "@/lib/AppContext";
 import { useMobile } from "@/lib/useMobile";
 
@@ -50,15 +43,12 @@ export default function HistoryPage() {
   const isMobile = useMobile();
   const app = useApp();
   const [cashFlowPeriod, setCashFlowPeriod] = useState("1М");
-  const [histPeriod, setHistPeriod] = useState<"1M"|"3M"|"6M"|"YTD"|"1Y"|"ALL">("YTD");
+  const [histPeriod, setHistPeriod] = useState<"1M"|"3M"|"6M"|"YTD"|"1Y"|"ALL">("ALL");
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<EventItem[]>(FALLBACK_EVENTS);
   const [calendarLoading, setCalendarLoading] = useState(true);
-
-  const HIST_DATA: Record<string, typeof portfolioHistoryYTD> = {
-    "1M": portfolioHistory1M, "3M": portfolioHistory3M, "6M": portfolioHistory6M,
-    "YTD": portfolioHistoryYTD, "1Y": portfolioHistory1Y, "ALL": portfolioHistoryAll,
-  };
+  const [lsHistory, setLsHistory] = useState<{ date: string; value: number }[]>([]);
+  const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[] }>>({});
 
   const liveTotal = app.portfolioTotal;
   const livePnl   = app.totalPnl;
@@ -128,6 +118,72 @@ export default function HistoryPage() {
     return () => { cancelled = true; };
   }, [realPositions]);
 
+  // Load localStorage portfolio-chart-history + fetch Finnhub candles
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("portfolio-chart-history");
+      if (raw) {
+        const parsed: { date: string; value: number }[] = JSON.parse(raw);
+        setLsHistory(parsed);
+      }
+    } catch {}
+
+    const tickers = realPositions
+      .filter(p => p.type !== "Кэш" && p.type !== "Крипто")
+      .map(p => p.ticker);
+    if (tickers.length > 0) {
+      fetch(`/api/historical?tickers=${tickers.join(",")}&days=500`)
+        .then(r => r.ok ? r.json() : {})
+        .then(data => setHistData(data || {}))
+        .catch(() => {});
+    }
+  }, [realPositions]);
+
+  // Compute portfolio value at each date using instrument prices × current quantities
+  const computedTimeline = useMemo((): { date: string; value: number }[] => {
+    if (!realPositions.length || Object.keys(histData).length === 0) return [];
+    const allDates = new Set<string>();
+    for (const hist of Object.values(histData)) hist.dates.forEach(d => allDates.add(d));
+    return [...allDates].sort().map(date => {
+      let val = 0;
+      for (const p of realPositions) {
+        const fallback = p.qty * p.avgPrice;
+        if (p.type === "Кэш") { val += fallback; continue; }
+        const hist = histData[p.ticker];
+        if (!hist?.dates.length) { val += fallback; continue; }
+        let idx = -1;
+        for (let i = hist.dates.length - 1; i >= 0; i--) {
+          if (hist.dates[i] <= date) { idx = i; break; }
+        }
+        val += idx >= 0 ? p.qty * hist.closes[idx] : fallback;
+      }
+      return { date, value: Math.round(val) };
+    });
+  }, [histData, realPositions]);
+
+  // Merge: computed (higher priority) over localStorage snapshots
+  const mergedTimeline = useMemo((): { date: string; value: number }[] => {
+    const byDate = new Map<string, number>();
+    for (const p of lsHistory) byDate.set(p.date, p.value);
+    for (const p of computedTimeline) byDate.set(p.date, p.value);
+    const today = new Date().toISOString().slice(0, 10);
+    if (liveTotal > 0) byDate.set(today, Math.round(liveTotal));
+    return [...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date, value }));
+  }, [lsHistory, computedTimeline, liveTotal]);
+
+  // Filter by selected period
+  const chartData = useMemo(() => {
+    const now = new Date();
+    let cutoff = "0000-00-00";
+    if (histPeriod === "1M") { const d = new Date(now); d.setMonth(d.getMonth() - 1); cutoff = d.toISOString().slice(0, 10); }
+    else if (histPeriod === "3M") { const d = new Date(now); d.setMonth(d.getMonth() - 3); cutoff = d.toISOString().slice(0, 10); }
+    else if (histPeriod === "6M") { const d = new Date(now); d.setMonth(d.getMonth() - 6); cutoff = d.toISOString().slice(0, 10); }
+    else if (histPeriod === "YTD") { cutoff = `${now.getFullYear()}-01-01`; }
+    else if (histPeriod === "1Y") { const d = new Date(now); d.setFullYear(d.getFullYear() - 1); cutoff = d.toISOString().slice(0, 10); }
+    const fmtDate = (iso: string) => { const [, m, day] = iso.split("-"); return `${day}.${m}`; };
+    return mergedTimeline.filter(p => p.date >= cutoff).map(p => ({ date: fmtDate(p.date), value: p.value }));
+  }, [mergedTimeline, histPeriod]);
+
   // Asset distribution from real positions
   const realDistribution = useMemo(() => {
     if (!realPositions.length) return [];
@@ -144,21 +200,6 @@ export default function HistoryPage() {
       pct: totalVal > 0 ? ((g.value / totalVal) * 100).toFixed(1) + "%" : "0%",
     }));
   }, [realPositions, liveQuotes]);
-
-  // Scale mock chart shape to real portfolio values
-  const scaledHistData = useMemo(() => {
-    const raw = HIST_DATA[histPeriod];
-    if (!raw.length || liveTotal <= 0) return raw;
-    const rawMin = Math.min(...raw.map(d => d.value));
-    const rawMax = Math.max(...raw.map(d => d.value));
-    const rawRange = rawMax - rawMin || 1;
-    const targetMax = liveTotal;
-    const targetMin = liveCost > 0 ? Math.min(liveCost * 0.88, liveTotal * 0.82) : liveTotal * 0.82;
-    return raw.map(d => ({
-      ...d,
-      value: Math.round(targetMin + ((d.value - rawMin) / rawRange) * (targetMax - targetMin)),
-    }));
-  }, [histPeriod, liveTotal, liveCost]);
 
   // Operations: generated from current positions as initial purchases
   const operations = useMemo((): Operation[] => {
@@ -428,34 +469,31 @@ export default function HistoryPage() {
               </div>
             </div>
 
-            {liveTotal <= 0 ? (
+            {chartData.length === 0 ? (
               <div style={{ height: 188, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, flexDirection: "column", gap: 6 }}>
                 <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2} opacity={0.4}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
                 </svg>
-                <span style={{ opacity: 0.5 }}>Добавьте инструменты для отображения графика</span>
+                <span style={{ opacity: 0.5 }}>{liveTotal <= 0 ? "Добавьте инструменты для отображения графика" : "Загрузка истории…"}</span>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={188}>
-                <AreaChart data={scaledHistData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="capGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.4} />
-                      <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: "var(--text-muted)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 9, fill: "var(--text-muted)" }} tickLine={false} axisLine={false} tickFormatter={v => `${(v / 1000).toFixed(0)}K`} domain={["auto","auto"]} width={34} />
-                  <Tooltip
-                    contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 12 }}
-                    labelStyle={{ color: "var(--text-secondary)", fontSize: 10 }}
-                    formatter={(v: any) => [`$${Number(v).toLocaleString("en-US")}`, "Капитал"]}
-                    cursor={{ stroke: "var(--accent)", strokeWidth: 1, strokeDasharray: "4 3", strokeOpacity: 0.5 }}
-                  />
-                  <Area type="monotone" dataKey="value" stroke="var(--accent-light)" strokeWidth={2} fill="url(#capGrad)" dot={false} activeDot={{ r: 4, fill: "var(--accent-light)", stroke: "var(--accent)", strokeWidth: 2 }} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <ApexChart
+                type="area"
+                height={200}
+                series={[{ name: "Капитал", data: chartData.map(d => d.value) }]}
+                options={{
+                  chart: { type: "area", toolbar: { show: false }, background: "transparent", animations: { enabled: true, speed: 500 } },
+                  stroke: { curve: "smooth", width: 2, colors: ["#8b5cf6"] },
+                  fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.0, stops: [0, 100], colorStops: [{ offset: 0, color: "#8b5cf6", opacity: 0.35 }, { offset: 100, color: "#8b5cf6", opacity: 0 }] } },
+                  xaxis: { categories: chartData.map(d => d.date), labels: { style: { fontSize: "9px", colors: "#888" }, rotate: 0 }, axisBorder: { show: false }, axisTicks: { show: false }, tickAmount: 6 },
+                  yaxis: { labels: { formatter: (v: number) => `${(v / 1000).toFixed(0)}K`, style: { fontSize: "9px", colors: "#888" } }, tickAmount: 4 },
+                  grid: { borderColor: "rgba(255,255,255,0.06)", strokeDashArray: 3, xaxis: { lines: { show: false } }, padding: { left: 0, right: 0 } },
+                  tooltip: { theme: "dark", y: { formatter: (v: number) => `$${Number(v).toLocaleString("en-US")}` } },
+                  dataLabels: { enabled: false },
+                  markers: { size: 0, hover: { size: 5, sizeOffset: 2 } },
+                  theme: { mode: "dark" },
+                }}
+              />
             )}
 
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
@@ -502,19 +540,23 @@ export default function HistoryPage() {
               <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 16, textAlign: "center" }}>Нет инструментов в портфеле</div>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ position: "relative" }}>
-                  <ResponsiveContainer width={120} height={120}>
-                    <PieChart>
-                      <Pie data={realDistribution} dataKey="value" cx="50%" cy="50%" innerRadius={36} outerRadius={54}>
-                        {realDistribution.map((e, i) => <Cell key={i} fill={e.color} />)}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", textAlign: "center" }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{Math.round(liveTotal / 1000)}K</div>
-                    <div style={{ fontSize: 9, color: "var(--text-secondary)" }}>USD</div>
-                  </div>
-                </div>
+                <ApexChart
+                  type="donut"
+                  width={130}
+                  height={130}
+                  series={realDistribution.map(d => d.value)}
+                  options={{
+                    labels: realDistribution.map(d => d.name),
+                    colors: realDistribution.map(d => d.color),
+                    chart: { background: "transparent", animations: { enabled: true, speed: 400 } },
+                    stroke: { width: 2, colors: ["transparent"] },
+                    dataLabels: { enabled: false },
+                    legend: { show: false },
+                    plotOptions: { pie: { donut: { size: "62%", labels: { show: true, total: { show: true, label: "USD", fontSize: "9px", color: "#888", formatter: () => `${Math.round(liveTotal / 1000)}K` }, value: { show: false } } } } },
+                    tooltip: { theme: "dark", y: { formatter: (v: number) => `$${Number(v).toLocaleString("en-US")}` } },
+                    theme: { mode: "dark" },
+                  }}
+                />
                 <div style={{ flex: 1 }}>
                   {realDistribution.map(item => (
                     <div key={item.name} style={{ fontSize: 11, marginBottom: 6 }}>

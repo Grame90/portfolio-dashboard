@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
 
-const API_KEY = process.env.FINNHUB_API_KEY!;
-const BASE = "https://finnhub.io/api/v1/quote";
+const KEYS = [
+  process.env.TWELVEDATA_API_KEY_1,
+  process.env.TWELVEDATA_API_KEY_2,
+  process.env.TWELVEDATA_API_KEY_3,
+].filter(Boolean) as string[];
 
-// Finnhub symbol mapping (some tickers differ)
-const SYMBOL_MAP: Record<string, string> = {
-  "КЭШ (USD)": "",
-  "BRK.B": "BRK.B",
-};
+// Each key fires every (SLOT * KEYS.length) seconds → 800 calls / 16h per key
+const SLOT = 25; // seconds per slot → effective refresh = 25s, each key every 75s
+
+function getKey(offset = 0): string {
+  const idx = (Math.floor(Date.now() / (SLOT * 1000)) + offset) % KEYS.length;
+  return KEYS[idx] ?? KEYS[0];
+}
+
+const SKIP = new Set(["КЭШ (USD)", "USD", "CASH"]);
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -16,40 +23,38 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "tickers param required" }, { status: 400 });
   }
 
-  const tickers = tickersParam.split(",").filter(Boolean);
+  const tickers = tickersParam.split(",").filter(t => t && !SKIP.has(t));
+  if (!tickers.length) return NextResponse.json({});
 
-  const results = await Promise.allSettled(
-    tickers.map(async (ticker) => {
-      const symbol = SYMBOL_MAP[ticker] ?? ticker;
-      if (!symbol) return { ticker, current: 0, previousClose: 0, skip: true };
-
-      const res = await fetch(`${BASE}?symbol=${symbol}&token=${API_KEY}`, {
-        next: { revalidate: 0 },
-      });
-
-      if (!res.ok) throw new Error(`Finnhub error ${res.status} for ${symbol}`);
-
-      const data = await res.json();
-      // Finnhub fields: c=current, pc=previous close, o=open, h=high, l=low, t=unix timestamp
-      return {
-        ticker,
-        current: data.c ?? 0,
-        previousClose: data.pc ?? 0,
-        open: data.o ?? 0,
-        high: data.h ?? 0,
-        low: data.l ?? 0,
-        t: data.t ?? 0,
-      };
-    })
+  const res = await fetch(
+    `https://api.twelvedata.com/quote?symbol=${tickers.join(",")}&apikey=${getKey()}`,
+    { next: { revalidate: 0 } }
   );
 
-  const quotes: Record<string, { current: number; previousClose: number; open: number; high: number; low: number }> = {};
-  results.forEach((r) => {
-    if (r.status === "fulfilled" && !r.value.skip) {
-      const { ticker, ...rest } = r.value as any;
-      quotes[ticker] = rest;
-    }
-  });
+  if (!res.ok) {
+    return NextResponse.json({ error: `Twelve Data error ${res.status}` }, { status: 502 });
+  }
+
+  const data = await res.json();
+  const isMulti = tickers.length > 1;
+
+  const quotes: Record<string, {
+    current: number; previousClose: number;
+    open: number; high: number; low: number; t: number;
+  }> = {};
+
+  for (const ticker of tickers) {
+    const q = isMulti ? data[ticker] : data;
+    if (!q || q.code || !q.close) continue;
+    quotes[ticker] = {
+      current:       parseFloat(q.close)          || 0,
+      previousClose: parseFloat(q.previous_close) || 0,
+      open:          parseFloat(q.open)            || 0,
+      high:          parseFloat(q.high)            || 0,
+      low:           parseFloat(q.low)             || 0,
+      t:             q.last_quote_at ?? q.timestamp ?? 0,
+    };
+  }
 
   return NextResponse.json(quotes);
 }

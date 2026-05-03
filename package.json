@@ -10,11 +10,18 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
+    "apexcharts": "^5.10.6",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
     "react": "19.2.4",
+    "react-apexcharts": "^2.1.0",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1"
   },

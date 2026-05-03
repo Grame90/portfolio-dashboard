@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useMobile } from "@/lib/useMobile";
 import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
+import ApexChart from "@/components/ApexChart";
 import {
-  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, ReferenceLine, CartesianGrid,
 } from "recharts";
 
@@ -198,6 +199,7 @@ export default function PortfolioPage() {
   }, []);
 
   const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[] }>>({});
+  const [histLoaded, setHistLoaded] = useState(false);
 
   useEffect(() => {
     const initial = loadLivePositions();
@@ -206,15 +208,19 @@ export default function PortfolioPage() {
     fetchQuotes(initial);
     const id = setInterval(() => {
       setPositions((prev) => { fetchQuotes(prev); return prev; });
-    }, 30000);
+    }, 25000);
 
-    // Fetch 400 days of historical prices for period P&L calculation
-    const stockTickers = initial.filter(p => p.live && p.type !== "Крипто" && p.type !== "Кэш").map(p => p.ticker);
+    // Fetch 500 days of historical prices for period P&L calculation
+    const stockTickers = initial
+      .filter(p => p.type !== "Кэш" && p.type !== "Крипто")
+      .map(p => p.ticker);
     if (stockTickers.length > 0) {
-      fetch(`/api/historical?tickers=${stockTickers.join(",")}&days=400`)
+      fetch(`/api/historical?tickers=${stockTickers.join(",")}&days=500`)
         .then(r => r.ok ? r.json() : {})
-        .then(data => setHistData(data))
-        .catch(() => {});
+        .then(data => { setHistData(data || {}); setHistLoaded(true); })
+        .catch(() => { setHistLoaded(true); });
+    } else {
+      setHistLoaded(true);
     }
 
     return () => clearInterval(id);
@@ -334,15 +340,49 @@ export default function PortfolioPage() {
     });
   }, [portfolioTotal, totalCost]);
 
+  // Compute portfolio timeline from Finnhub historical prices × current quantities
+  const computedTimeline = useMemo((): { date: string; value: number }[] => {
+    if (!positions.length || Object.keys(histData).length === 0) return [];
+    const allDates = new Set<string>();
+    for (const hist of Object.values(histData)) hist.dates.forEach(d => allDates.add(d));
+    return [...allDates].sort().map(date => {
+      let val = 0;
+      for (const p of positions) {
+        const fallback = p.qty * p.avgPrice;
+        if (p.type === "Кэш") { val += fallback; continue; }
+        const hist = histData[p.ticker];
+        if (!hist?.dates.length) { val += fallback; continue; }
+        let idx = -1;
+        for (let i = hist.dates.length - 1; i >= 0; i--) {
+          if (hist.dates[i] <= date) { idx = i; break; }
+        }
+        val += idx >= 0 ? p.qty * hist.closes[idx] : fallback;
+      }
+      return { date, value: Math.round(val) };
+    });
+  }, [histData, positions]);
+
+  // Merge computed (higher priority) + localStorage snapshots
+  const mergedTimeline = useMemo((): { date: string; value: number; cost: number }[] => {
+    const byDate = new Map<string, { value: number; cost: number }>();
+    for (const p of history) byDate.set(p.date, { value: p.value, cost: p.cost });
+    for (const p of computedTimeline) {
+      const existing = byDate.get(p.date);
+      byDate.set(p.date, { value: p.value, cost: existing?.cost ?? totalCost });
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    if (portfolioTotal > 0) byDate.set(today, { value: Math.round(portfolioTotal), cost: Math.round(totalCost) });
+    return [...byDate.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]) => ({ date, ...v }));
+  }, [history, computedTimeline, portfolioTotal, totalCost]);
+
   const chartData = useMemo(() => {
     const cutoff = periodCutoff(period);
-    const filtered = history.filter(p => p.date >= cutoff);
-    const today = new Date().toISOString().slice(0, 10);
-    const pts = filtered.map(p => ({ date: fmtDate(p.date), value: p.value, invested: p.cost }));
-    if (pts.length > 0 && filtered[filtered.length - 1]?.date !== today && portfolioTotal > 0)
-      pts.push({ date: fmtDate(today), value: Math.round(portfolioTotal), invested: Math.round(totalCost) });
-    return pts;
-  }, [history, period, portfolioTotal, totalCost]);
+    return mergedTimeline
+      .filter(p => p.date >= cutoff)
+      .map(p => ({ date: fmtDate(p.date), value: p.value, invested: p.cost }));
+  }, [mergedTimeline, period]);
   const totalPnlPct = totalCost > 0 ? ((portfolioTotal - totalCost) / totalCost) * 100 : 0;
   const prevTotal = positions.reduce((s, p) => s + p.qty * (p.previousClose > 0 ? p.previousClose : p.currentPrice), 0);
   const dailyChangePct = prevTotal > 0 ? ((portfolioTotal - prevTotal) / prevTotal) * 100 : 0;
@@ -430,22 +470,25 @@ export default function PortfolioPage() {
     // Get portfolio value at a given date using historical prices
     function portfolioValueOn(cutoffDate: string): number | null {
       if (!positions.length) return null;
+      if (!histLoaded) return null; // still fetching
+      if (Object.keys(histData).length === 0) return null; // no data → fall back to localStorage
       let val = 0;
-      let hasAnyHist = false;
       for (const p of positions) {
         if (p.type === "Кэш") { val += p.value; continue; }
         const hist = histData[p.ticker];
-        if (!hist?.dates.length) { val += p.value; continue; }
+        if (!hist?.dates.length) {
+          val += p.value; // no hist for this ticker — contributes 0 P&L for the period
+          continue;
+        }
         // Find last close on or before cutoffDate
         let idx = -1;
         for (let i = hist.dates.length - 1; i >= 0; i--) {
           if (hist.dates[i] <= cutoffDate) { idx = i; break; }
         }
         if (idx < 0) { val += p.value; continue; }
-        hasAnyHist = true;
         val += p.qty * hist.closes[idx];
       }
-      return hasAnyHist ? val : null;
+      return val;
     }
 
     function diff(period: string) {
@@ -473,7 +516,7 @@ export default function PortfolioPage() {
       "3М": diff("3М"), "6М": diff("6М"), "YTD": diff("YTD"),
       "1Г": diff("1Г"), "ВСЕ": diff("ВСЕ"),
     };
-  }, [history, portfolioTotal, histData, positions]);
+  }, [history, portfolioTotal, histData, histLoaded, positions]);
 
   const weightedBeta = useMemo(() => {
     if (portfolioTotal <= 0 || positions.length === 0) return 1.0;
@@ -603,14 +646,22 @@ export default function PortfolioPage() {
             return (
               <div className="card">
                 <div className="card-title">Структура портфеля</div>
-                <ResponsiveContainer width="100%" height={110}>
-                  <PieChart>
-                    <Pie data={liveDist} dataKey="value" cx="50%" cy="50%" innerRadius={32} outerRadius={50} paddingAngle={2}>
-                      {liveDist.map((e, i) => <Cell key={i} fill={e.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", fontSize: 11 }} formatter={(v: any) => [`${v}%`]} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <ApexChart
+                  type="donut"
+                  height={115}
+                  series={liveDist.map(d => d.value)}
+                  options={{
+                    labels: liveDist.map(d => d.name),
+                    colors: liveDist.map(d => d.color),
+                    chart: { background: "transparent", animations: { enabled: true, speed: 400 } },
+                    stroke: { width: 2, colors: ["transparent"] },
+                    dataLabels: { enabled: false },
+                    legend: { show: false },
+                    plotOptions: { pie: { donut: { size: "60%" } } },
+                    tooltip: { theme: "dark", y: { formatter: (v: number) => `${v}%` } },
+                    theme: { mode: "dark" },
+                  }}
+                />
                 <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
                   {liveDist.map((e) => (
                     <div key={e.name}>
@@ -1325,23 +1376,21 @@ export default function PortfolioPage() {
                     </div>
                   </div>
                   {liveSnapshots.length >= 2 && (() => {
-                    const snapData = liveSnapshots.slice(0, 8).reverse().map((s) => ({ date: s.date.slice(0, 5), value: s.capital }));
-                    const minV = Math.min(...snapData.map(d => d.value));
-                    const normalized = snapData.map(d => ({ ...d, value: d.value - minV }));
+                    const snapData = liveSnapshots.slice(0, 8).reverse().map(s => s.capital);
                     return (
-                      <ResponsiveContainer width="100%" height={40}>
-                        <AreaChart data={normalized} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="gradSnap" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                              <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <Area type="monotone" dataKey="value" stroke="#22c55e" strokeWidth={1.5} fill="url(#gradSnap)" dot={false} />
-                          <Tooltip contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", fontSize: 10 }}
-                            formatter={(_v: any, _n: any, props: any) => [`$${snapData[props.index]?.value?.toLocaleString("en-US") ?? ""}`, "Капитал"]} />
-                        </AreaChart>
-                      </ResponsiveContainer>
+                      <ApexChart
+                        type="area"
+                        height={44}
+                        series={[{ data: snapData }]}
+                        options={{
+                          chart: { type: "area", toolbar: { show: false }, background: "transparent", sparkline: { enabled: true }, animations: { enabled: false } },
+                          stroke: { curve: "smooth", width: 1.5, colors: ["#22c55e"] },
+                          fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0, stops: [0, 100], colorStops: [{ offset: 0, color: "#22c55e", opacity: 0.3 }, { offset: 100, color: "#22c55e", opacity: 0 }] } },
+                          tooltip: { theme: "dark", fixed: { enabled: false }, y: { formatter: (v: number) => `$${Number(v).toLocaleString("en-US")}` } },
+                          dataLabels: { enabled: false },
+                          theme: { mode: "dark" },
+                        }}
+                      />
                     );
                   })()}
                 </div>
@@ -1429,33 +1478,28 @@ export default function PortfolioPage() {
                 <span style={{ fontSize: 10, opacity: 0.4 }}>Сегодняшняя точка уже сохранена</span>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gradPortfolio" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="gradInvested" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.12} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: "var(--text-muted)" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 9, fill: "var(--text-muted)" }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} width={40} />
-                  <Tooltip
-                    contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
-                    formatter={(v: any, name: any) => [
-                      `$${Number(v).toLocaleString("en-US")}`,
-                      name === "value" ? "Стоимость" : "Вложено",
-                    ]}
-                    cursor={{ stroke: "var(--accent)", strokeWidth: 1, strokeDasharray: "4 3", strokeOpacity: 0.5 }}
-                  />
-                  <Area type="monotone" dataKey="invested" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="5 3" fill="url(#gradInvested)" dot={false} />
-                  <Area type="monotone" dataKey="value" stroke="var(--accent-light)" strokeWidth={2} fill="url(#gradPortfolio)" dot={chartData.length <= 14} activeDot={{ r: 4, fill: "var(--accent-light)", strokeWidth: 2 }} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <ApexChart
+                type="area"
+                height={185}
+                series={[
+                  { name: "Стоимость", data: chartData.map(d => d.value) },
+                  { name: "Вложено",   data: chartData.map(d => d.invested) },
+                ]}
+                options={{
+                  chart: { type: "area", toolbar: { show: false }, background: "transparent", animations: { enabled: true, speed: 500 } },
+                  stroke: { curve: "smooth", width: [2, 1.5], dashArray: [0, 5], colors: ["#8b5cf6", "#f59e0b"] },
+                  fill: { type: "gradient", gradient: { shadeIntensity: 1, opacityFrom: [0.3, 0.1], opacityTo: [0, 0], stops: [0, 100] } },
+                  colors: ["#8b5cf6", "#f59e0b"],
+                  xaxis: { categories: chartData.map(d => d.date), labels: { style: { fontSize: "9px", colors: "#888" } }, axisBorder: { show: false }, axisTicks: { show: false }, tickAmount: 6 },
+                  yaxis: { labels: { formatter: (v: number) => `$${(v / 1000).toFixed(0)}K`, style: { fontSize: "9px", colors: "#888" } }, tickAmount: 4 },
+                  grid: { borderColor: "rgba(255,255,255,0.06)", strokeDashArray: 3, xaxis: { lines: { show: false } }, padding: { left: 0, right: 0 } },
+                  tooltip: { theme: "dark", y: { formatter: (v: number) => `$${Number(v).toLocaleString("en-US")}` } },
+                  legend: { show: true, position: "top", horizontalAlign: "right", fontSize: "10px", labels: { colors: "#888" }, markers: { size: 4 } },
+                  dataLabels: { enabled: false },
+                  markers: { size: 0, hover: { size: 4 } },
+                  theme: { mode: "dark" },
+                }}
+              />
             )}
           </div>
 
@@ -1472,14 +1516,22 @@ export default function PortfolioPage() {
             return (
               <div className="card">
                 <div className="card-title">Распределение активов</div>
-                <ResponsiveContainer width="100%" height={120}>
-                  <PieChart>
-                    <Pie data={liveDist2} dataKey="value" cx="50%" cy="50%" innerRadius={35} outerRadius={55}>
-                      {liveDist2.map((e, i) => <Cell key={i} fill={e.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", fontSize: 12 }} formatter={(v: any) => [`${v}%`]} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <ApexChart
+                  type="donut"
+                  height={125}
+                  series={liveDist2.map(d => d.value)}
+                  options={{
+                    labels: liveDist2.map(d => d.name),
+                    colors: liveDist2.map(d => d.color),
+                    chart: { background: "transparent", animations: { enabled: true, speed: 400 } },
+                    stroke: { width: 2, colors: ["transparent"] },
+                    dataLabels: { enabled: false },
+                    legend: { show: false },
+                    plotOptions: { pie: { donut: { size: "58%" } } },
+                    tooltip: { theme: "dark", y: { formatter: (v: number) => `${v}%` } },
+                    theme: { mode: "dark" },
+                  }}
+                />
                 <div style={{ marginTop: 8 }}>
                   {liveDist2.map((e) => (
                     <div key={e.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>

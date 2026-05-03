@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useMobile } from "@/lib/useMobile";
 import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
+import { Dialog } from "@/components/ui/Dialog";
+import { Select, SelectItem } from "@/components/ui/Select";
+import { Tooltip as UITooltip } from "@/components/ui/Tooltip";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -241,7 +244,7 @@ export default function PositionsPage() {
     fetchQuotes(initial);
     const id = setInterval(() => {
       setPositions((prev) => { fetchQuotes(prev); return prev; });
-    }, 30000);
+    }, 25000);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchQuotes]);
@@ -1036,14 +1039,12 @@ export default function PositionsPage() {
                               borderRadius: 5, fontWeight: 700, whiteSpace: "nowrap",
                             }} title="Зафиксировать позицию">💰</button>
                           )}
-                          <button onClick={() => openEdit(p)} style={{
-                            background: "none", border: "none", cursor: "pointer", color: "var(--accent-light)", fontSize: 13, padding: "2px 5px",
-                            borderRadius: 4, opacity: 0.7,
-                          }} title="Редактировать">✎</button>
-                          <button onClick={() => setDeleteConfirm(p)} style={{
-                            background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 14, padding: "2px 5px",
-                            borderRadius: 4, opacity: 0.6,
-                          }} title="Удалить позицию">✕</button>
+                          <UITooltip content="Редактировать позицию" side="top">
+                            <button onClick={() => openEdit(p)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-light)", fontSize: 13, padding: "2px 5px", borderRadius: 4, opacity: 0.7 }}>✎</button>
+                          </UITooltip>
+                          <UITooltip content="Удалить позицию" side="top">
+                            <button onClick={() => setDeleteConfirm(p)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontSize: 14, padding: "2px 5px", borderRadius: 4, opacity: 0.6 }}>✕</button>
+                          </UITooltip>
                         </div>
                       </td>
                     </tr>
@@ -1242,85 +1243,55 @@ export default function PositionsPage() {
       </div>
 
       {/* Edit modal */}
-      {editTarget && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 1000,
-          background: "rgba(0,0,0,0.55)", backdropFilter: "blur(3px)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }} onClick={() => setEditTarget(null)}>
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--bg-card)", border: "1px solid var(--border)",
-              borderRadius: 14, padding: "26px 28px", width: 480,
-              boxShadow: "0 8px 40px rgba(0,0,0,0.4)",
-              animation: "fadeIn 0.15s ease",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-              <div style={{
-                width: 38, height: 38, borderRadius: "50%", background: editForm.color,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700, color: "white", flexShrink: 0,
-              }}>
-                {(editForm.ticker || "??").slice(0, 2)}
-              </div>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Редактировать позицию</div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-              {[
-                { label: "Тикер", key: "ticker", type: "text" },
-                { label: "Название", key: "name", type: "text" },
-                { label: "Количество", key: "qty", type: "number" },
-                { label: "Средняя цена ($)", key: "avgPrice", type: "number" },
-                { label: "Текущая цена ($)", key: "currentPrice", type: "number" },
-                { label: "Дата покупки", key: "purchaseDate", type: "date" },
-              ].map((f) => (
-                <div key={f.key}>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>{f.label}</div>
-                  <input
-                    type={f.type}
-                    value={(editForm as any)[f.key]}
-                    onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
-                    style={{
-                      width: "100%", padding: "8px 10px", borderRadius: 8,
-                      border: "1px solid var(--border)", background: "var(--bg-secondary)",
-                      color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box",
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 8 }}>Тип</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {TYPES.map((t) => (
-                  <button key={t} onClick={() => setEditForm({ ...editForm, type: t })} style={{
-                    padding: "5px 12px", borderRadius: 20, border: "1px solid var(--border)", cursor: "pointer", fontSize: 11, fontWeight: 600,
-                    background: editForm.type === t ? "var(--accent)" : "transparent",
-                    color: editForm.type === t ? "white" : "var(--text-secondary)",
-                  }}>{t}</button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setEditTarget(null)} style={{
-                flex: 1, padding: "10px", borderRadius: 8, border: "1px solid var(--border)",
-                background: "transparent", color: "var(--text-secondary)", cursor: "pointer",
-                fontSize: 13, fontWeight: 600,
-              }}>Отмена</button>
-              <button onClick={saveEdit} style={{
-                flex: 1, padding: "10px", borderRadius: 8, border: "none",
-                background: "var(--accent)", color: "white", cursor: "pointer",
-                fontSize: 13, fontWeight: 600,
-              }}>Сохранить</button>
-            </div>
+      <Dialog
+        open={!!editTarget}
+        onOpenChange={(o) => { if (!o) setEditTarget(null); }}
+        title="Редактировать позицию"
+        maxWidth={500}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18, padding: "10px 12px", background: "var(--bg-secondary)", borderRadius: 10 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: editForm.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "white", flexShrink: 0 }}>
+            {(editForm.ticker || "??").slice(0, 2)}
+          </div>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{editForm.ticker || "—"}</div>
+            <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{editForm.name || "Инструмент"}</div>
           </div>
         </div>
-      )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+          {[
+            { label: "Тикер", key: "ticker", type: "text" },
+            { label: "Название", key: "name", type: "text" },
+            { label: "Количество", key: "qty", type: "number" },
+            { label: "Средняя цена ($)", key: "avgPrice", type: "number" },
+            { label: "Текущая цена ($)", key: "currentPrice", type: "number" },
+            { label: "Дата покупки", key: "purchaseDate", type: "date" },
+          ].map((f) => (
+            <div key={f.key}>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>{f.label}</div>
+              <input
+                type={f.type}
+                value={(editForm as any)[f.key]}
+                onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 13, boxSizing: "border-box" }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>Тип актива</div>
+          <Select value={editForm.type} onValueChange={(v) => setEditForm({ ...editForm, type: v })}>
+            {TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+          </Select>
+        </div>
+
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={() => setEditTarget(null)} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Отмена</button>
+          <button onClick={saveEdit} style={{ flex: 2, padding: "10px", borderRadius: 8, border: "none", background: "var(--accent)", color: "white", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Сохранить изменения</button>
+        </div>
+      </Dialog>
 
       {/* Take profit modal */}
       {takeProfitTarget && (() => {

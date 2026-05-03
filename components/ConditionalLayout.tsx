@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import { AppProvider, useApp } from "@/lib/AppContext";
 import { useMobile } from "@/lib/useMobile";
+import { TooltipProvider } from "@/components/ui/Tooltip";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, authLoading } = useApp();
@@ -57,16 +58,20 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
   if (isAuth) {
     return (
       <AppProvider>
-        {children}
+        <TooltipProvider>
+          {children}
+        </TooltipProvider>
       </AppProvider>
     );
   }
 
   return (
     <AppProvider>
-      <AuthGuard>
-        {children}
-      </AuthGuard>
+      <TooltipProvider>
+        <AuthGuard>
+          {children}
+        </AuthGuard>
+      </TooltipProvider>
     </AppProvider>
   );
 }

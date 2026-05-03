@@ -9,6 +9,8 @@ import {
   Palette, FileText, MoreHorizontal, X,
 } from "lucide-react";
 import { useMobile } from "@/lib/useMobile";
+import { useApp } from "@/lib/AppContext";
+import { LogOut } from "lucide-react";
 
 const navItems = [
   { href: "/portfolio",  icon: LayoutDashboard, label: "Портфель" },
@@ -89,6 +91,7 @@ function applyThemeVars(id: ThemeId) {
 export default function Sidebar() {
   const pathname = usePathname();
   const isMobile = useMobile();
+  const { user, signOut } = useApp();
   const [theme, setTheme] = useState<ThemeId>("purple");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -197,6 +200,7 @@ export default function Sidebar() {
                         cursor: "pointer",
                       }}
                     />
+
                   ))}
                 </div>
                 <button
@@ -209,6 +213,25 @@ export default function Sidebar() {
                   }}
                 >
                   {isDark ? "🌙 Тёмная" : "☀️ Светлая"}
+                </button>
+              </div>
+
+              {/* Account + logout */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
+                  {user?.email ?? ""}
+                </div>
+                <button
+                  onClick={() => { setMenuOpen(false); signOut(); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "7px 14px",
+                    borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)",
+                    background: "rgba(239,68,68,0.08)", cursor: "pointer",
+                    fontSize: 12, fontWeight: 600, color: "#ef4444", whiteSpace: "nowrap",
+                  }}
+                >
+                  <LogOut size={14} />
+                  Выйти
                 </button>
               </div>
             </div>
@@ -359,6 +382,19 @@ export default function Sidebar() {
             Обновлено<br />{updatedAt}
           </div>
         )}
+
+        <button
+          onClick={() => signOut()}
+          title={`Выйти (${user?.email ?? ""})`}
+          style={{
+            marginTop: 10, width: 36, height: 36, borderRadius: 8,
+            border: "1px solid rgba(239,68,68,0.25)",
+            background: "rgba(239,68,68,0.07)",
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          <LogOut size={15} color="#ef4444" />
+        </button>
       </div>
     </aside>
   );

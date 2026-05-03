@@ -197,6 +197,8 @@ export default function PortfolioPage() {
     }
   }, []);
 
+  const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[] }>>({});
+
   useEffect(() => {
     const initial = loadLivePositions();
     setPositions(initial);
@@ -205,6 +207,16 @@ export default function PortfolioPage() {
     const id = setInterval(() => {
       setPositions((prev) => { fetchQuotes(prev); return prev; });
     }, 30000);
+
+    // Fetch 400 days of historical prices for period P&L calculation
+    const stockTickers = initial.filter(p => p.live && p.type !== "Крипто" && p.type !== "Кэш").map(p => p.ticker);
+    if (stockTickers.length > 0) {
+      fetch(`/api/historical?tickers=${stockTickers.join(",")}&days=400`)
+        .then(r => r.ok ? r.json() : {})
+        .then(data => setHistData(data))
+        .catch(() => {});
+    }
+
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchQuotes]);
@@ -415,20 +427,53 @@ export default function PortfolioPage() {
   })();
 
   const periodPnl: Record<string, { usd: number; pct: string; noData: boolean }> = useMemo(() => {
+    // Get portfolio value at a given date using historical prices
+    function portfolioValueOn(cutoffDate: string): number | null {
+      if (!positions.length) return null;
+      let val = 0;
+      let hasAnyHist = false;
+      for (const p of positions) {
+        if (p.type === "Кэш") { val += p.value; continue; }
+        const hist = histData[p.ticker];
+        if (!hist?.dates.length) { val += p.value; continue; }
+        // Find last close on or before cutoffDate
+        let idx = -1;
+        for (let i = hist.dates.length - 1; i >= 0; i--) {
+          if (hist.dates[i] <= cutoffDate) { idx = i; break; }
+        }
+        if (idx < 0) { val += p.value; continue; }
+        hasAnyHist = true;
+        val += p.qty * hist.closes[idx];
+      }
+      return hasAnyHist ? val : null;
+    }
+
     function diff(period: string) {
+      if (portfolioTotal <= 0) return { usd: 0, pct: "0.00", noData: true };
       const cutoff = periodCutoff(period);
+
+      // Try historical price data first
+      const pastVal = portfolioValueOn(cutoff);
+      if (pastVal !== null && pastVal > 0) {
+        const usd = Math.round(portfolioTotal - pastVal);
+        const pct = ((portfolioTotal - pastVal) / pastVal * 100).toFixed(2);
+        return { usd, pct, noData: false };
+      }
+
+      // Fallback: localStorage snapshot history
       const pt = [...history].reverse().find(p => p.date <= cutoff);
-      if (!pt || portfolioTotal <= 0) return { usd: 0, pct: "0.00", noData: true };
+      if (!pt) return { usd: 0, pct: "0.00", noData: true };
       const usd = Math.round(portfolioTotal - pt.value);
       const pct = pt.value > 0 ? ((portfolioTotal - pt.value) / pt.value * 100).toFixed(2) : "0.00";
       return { usd, pct, noData: false };
     }
+
     return {
       "1Д": diff("1Д"), "7Д": diff("7Д"), "1М": diff("1М"),
       "3М": diff("3М"), "6М": diff("6М"), "YTD": diff("YTD"),
       "1Г": diff("1Г"), "ВСЕ": diff("ВСЕ"),
     };
-  }, [history, portfolioTotal]);
+  }, [history, portfolioTotal, histData, positions]);
 
   const weightedBeta = useMemo(() => {
     if (portfolioTotal <= 0 || positions.length === 0) return 1.0;

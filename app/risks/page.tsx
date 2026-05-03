@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import PageHeader from "@/components/PageHeader";
 import {
   AreaChart, Area, PieChart, Pie, Cell,
@@ -9,6 +9,7 @@ import {
 } from "recharts";
 import { useApp } from "@/lib/AppContext";
 import { useMobile } from "@/lib/useMobile";
+import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
 
 // ── Drawdown series builders ───────────────────────────────────────────────
 // Historical 365-day path: cumulative return → peak-to-trough drawdown
@@ -126,6 +127,25 @@ export default function RisksPage() {
   const liveQuotes = app.liveQuotes;
   const total = app.portfolioTotal;
 
+  const [lsHistory, setLsHistory] = useState<{ date: string; value: number; cost: number }[]>([]);
+  useEffect(() => {
+    try { const r = localStorage.getItem("portfolio-chart-history"); if (r) setLsHistory(JSON.parse(r)); } catch {}
+  }, []);
+
+  const { mergedTimeline } = usePortfolioHistory(positions, lsHistory, total, app.totalCost);
+
+  const { historicalDrawdown, maxHistDrawdown } = useMemo(() => {
+    if (!mergedTimeline.length) return { historicalDrawdown: [] as { date: string; drawdown: number }[], maxHistDrawdown: 0 };
+    let peak = mergedTimeline[0].value;
+    const drawdown = mergedTimeline.map(h => {
+      if (h.value > peak) peak = h.value;
+      const dd = peak > 0 ? ((h.value - peak) / peak) * 100 : 0;
+      const date = new Date(h.date).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
+      return { date, drawdown: parseFloat(dd.toFixed(2)) };
+    });
+    return { historicalDrawdown: drawdown, maxHistDrawdown: Math.min(0, ...drawdown.map(d => d.drawdown)) };
+  }, [mergedTimeline]);
+
   // ── Per-position live value helper ───────────────────────────────────────
   const posValue = (p: typeof positions[0]) =>
     p.qty * (liveQuotes[p.ticker]?.current ?? p.avgPrice);
@@ -133,15 +153,12 @@ export default function RisksPage() {
   // ── Derived slices ────────────────────────────────────────────────────────
   const { metrics, riskScore, categories, stressScenarios, varRows,
           concentrationData, hedgingRows, highRiskRows, correlMatrix,
-          cashShare, dailyChgPct, top5pct,
-          historicalDrawdown, potentialDrawdown, maxHistDrawdown } = useMemo(() => {
+          cashShare, dailyChgPct, top5pct, potentialDrawdown } = useMemo(() => {
     if (!positions.length || total <= 0) return {
       metrics: null, riskScore: 0, categories: [], stressScenarios: [],
       varRows: [], concentrationData: [], hedgingRows: [], highRiskRows: [],
       correlMatrix: null, cashShare: 0, dailyChgPct: 0, top5pct: 0,
-      historicalDrawdown: [] as { date: string; drawdown: number }[],
-      potentialDrawdown:  [] as { date: string; band95: number; band68: number; expected: number }[],
-      maxHistDrawdown: 0,
+      potentialDrawdown: [] as { date: string; band95: number; band68: number; expected: number }[],
     };
 
     // Weighted beta & volatility
@@ -312,18 +329,12 @@ export default function RisksPage() {
       ),
     } : null;
 
-    // ── Drawdown charts from real portfolio data ──────────────────────────
-    // Historical: 365-day path driven by real wVol + real finalPnlPct
-    const historicalDrawdown = buildHistoricalDrawdown(wVol, app.totalPnlPct, 365);
-    const maxHistDrawdown = Math.min(0, ...historicalDrawdown.map(d => d.drawdown));
-
     // Potential: 90-day forward VaR fan from real wVol
     const potentialDrawdown = buildPotentialDrawdown(wVol, 90);
 
     return { metrics, riskScore, categories, stressScenarios, varRows,
              concentrationData, hedgingRows, highRiskRows, correlMatrix,
-             cashShare, dailyChgPct, top5pct,
-             historicalDrawdown, potentialDrawdown, maxHistDrawdown };
+             cashShare, dailyChgPct, top5pct, potentialDrawdown };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positions, total, app.totalPnlPct, liveQuotes]);
 

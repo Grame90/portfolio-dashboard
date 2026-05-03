@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useMobile } from "@/lib/useMobile";
 import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
+import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
+import type { StoredPosition } from "@/lib/AppContext";
 import { Dialog } from "@/components/ui/Dialog";
 import { Select, SelectItem } from "@/components/ui/Select";
 import { Tooltip as UITooltip } from "@/components/ui/Tooltip";
@@ -305,6 +307,13 @@ export default function PositionsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalForChart]);
 
+  const { mergedTimeline } = usePortfolioHistory(
+    positions as unknown as StoredPosition[],
+    chartHistory,
+    totalForChart,
+    costForChart,
+  );
+
   function chartCutoff(p: string): string {
     const d = new Date();
     if (p === "7Д")  d.setDate(d.getDate() - 7);
@@ -325,7 +334,7 @@ export default function PositionsPage() {
     if (totalForChart <= 0) return [];
     const cutoff = chartCutoff(period);
     const today = new Date().toISOString().slice(0, 10);
-    const filtered = chartHistory.filter(p => p.date >= cutoff);
+    const filtered = mergedTimeline.filter(p => p.date >= cutoff);
     const pts = filtered.map(p => ({ date: fmtDate(p.date), value: p.value, cost: p.cost }));
     // Always include live today value
     if (filtered[filtered.length - 1]?.date !== today)
@@ -339,13 +348,13 @@ export default function PositionsPage() {
     }
     return pts;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartHistory, period, totalForChart]);
+  }, [mergedTimeline, period, totalForChart]);
 
   const allChartData = useMemo(() => {
     if (totalForChart <= 0) return [];
     const today = new Date().toISOString().slice(0, 10);
-    const pts = chartHistory.map(p => ({ date: fmtDate(p.date), value: p.value, cost: p.cost }));
-    if (chartHistory[chartHistory.length - 1]?.date !== today)
+    const pts = mergedTimeline.map(p => ({ date: fmtDate(p.date), value: p.value, cost: p.cost }));
+    if (mergedTimeline[mergedTimeline.length - 1]?.date !== today)
       pts.push({ date: fmtDate(today), value: Math.round(totalForChart), cost: Math.round(costForChart) });
     // Need at least 2 points — synthesize a start point 30 days back at cost basis
     if (pts.length < 2) {
@@ -354,7 +363,7 @@ export default function PositionsPage() {
     }
     return pts;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartHistory, totalForChart]);
+  }, [mergedTimeline, totalForChart]);
 
   // #3 — Дневное изменение (currentPrice vs previousClose)
   const dailyChange = Math.round(

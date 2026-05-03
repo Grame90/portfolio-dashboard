@@ -289,6 +289,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const dailyChange    = portfolioTotal - prevTotal;
   const dailyChangePct = prevTotal > 0 ? (dailyChange / prevTotal) * 100 : 0;
 
+  // ── Daily auto-snapshot ───────────────────────────────────────────────────────
+  const autoSnapRef = useRef("");
+  useEffect(() => {
+    if (!positions.length || portfolioTotal <= 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (autoSnapRef.current === today) return;
+    try { if (localStorage.getItem("auto-snapshot-date") === today) { autoSnapRef.current = today; return; } } catch {}
+    autoSnapRef.current = today;
+    try { localStorage.setItem("auto-snapshot-date", today); } catch {}
+    const now = new Date();
+    const snap = {
+      date: now.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }),
+      time: now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
+      capital: Math.round(portfolioTotal),
+      cost: Math.round(totalCost),
+      profit: Math.round(totalPnl),
+      profitPct: totalPnlPct.toFixed(2) + "%",
+      comment: "Авто-фиксация",
+    };
+    try {
+      const existing = JSON.parse(localStorage.getItem("snapshots-data") || "[]");
+      existing.unshift(snap);
+      localStorage.setItem("snapshots-data", JSON.stringify(existing.slice(0, 365)));
+    } catch {}
+    try {
+      const hist: {date: string; value: number; cost: number}[] = JSON.parse(localStorage.getItem("portfolio-chart-history") || "[]");
+      const pt = { date: today, value: Math.round(portfolioTotal), cost: Math.round(totalCost) };
+      const idx = hist.findIndex(p => p.date === today);
+      if (idx >= 0) hist[idx] = pt; else hist.push(pt);
+      hist.sort((a, b) => a.date.localeCompare(b.date));
+      localStorage.setItem("portfolio-chart-history", JSON.stringify(hist.slice(-730)));
+    } catch {}
+    window.dispatchEvent(new Event("portfolio-snapshot"));
+  }, [portfolioTotal, totalCost, totalPnl, totalPnlPct, positions.length]);
+
   return (
     <AppContext.Provider value={{
       positions, liveQuotes, settings, quoteStatus, user, authLoading,

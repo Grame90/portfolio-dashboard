@@ -8,6 +8,7 @@ import {
 } from "recharts";
 import { useApp } from "@/lib/AppContext";
 import { useMobile } from "@/lib/useMobile";
+import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
 
 const periodOptions = ["7Д", "1М", "3М", "6М", "YTD", "1Г", "ВСЕ"];
 const LS_CHART = "portfolio-chart-history";
@@ -183,6 +184,8 @@ export default function OverviewPage() {
   const liveDailyChangePct = app.dailyChangePct;
   const liveCost = app.totalCost || 0;
 
+  const { mergedTimeline } = usePortfolioHistory(app.positions, history, livePortfolioTotal, liveCost);
+
   // Live risk score computed from real positions
   const liveRiskScore = (() => {
     const pos = app.positions;
@@ -283,46 +286,42 @@ export default function OverviewPage() {
 
   const chartData = useMemo(() => {
     const cutoff = periodCutoff(period);
-    const filtered = history.filter(p => p.date >= cutoff);
-    const today = new Date().toISOString().slice(0, 10);
-    const points = filtered.map(p => ({ date: formatDate(p.date), value: p.value, cost: p.cost }));
-    if (points.length > 0 && filtered[filtered.length - 1]?.date !== today && livePortfolioTotal > 0) {
-      points.push({ date: formatDate(today), value: Math.round(livePortfolioTotal), cost: Math.round(liveCost) });
-    }
-    return points;
-  }, [history, period, livePortfolioTotal, liveCost]);
+    return mergedTimeline
+      .filter(p => p.date >= cutoff)
+      .map(p => ({ date: formatDate(p.date), value: p.value, cost: p.cost }));
+  }, [mergedTimeline, period]);
 
-  // Period diffs from real history — used in top cards and chart stats
+  // Period diffs from merged timeline (real historical prices)
   const periodPerf = useMemo(() => {
     function diff(daysAgo: number) {
       if (livePortfolioTotal <= 0) return null;
       const cutStr = new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
-      const pt = [...history].reverse().find(p => p.date <= cutStr);
+      const pt = [...mergedTimeline].reverse().find(p => p.date <= cutStr);
       if (!pt) return null;
       const delta = livePortfolioTotal - pt.value;
       const pct = pt.value > 0 ? (delta / pt.value) * 100 : 0;
       return { value: Math.round(delta), pct };
     }
     return { week: diff(7), month: diff(30), halfYear: diff(182), year: diff(365) };
-  }, [history, livePortfolioTotal]);
+  }, [mergedTimeline, livePortfolioTotal]);
 
   const portfolioMaxDrawdown = useMemo(() => {
-    if (history.length < 2) return 0;
+    if (mergedTimeline.length < 2) return 0;
     let peak = 0, maxDD = 0;
-    history.forEach(p => {
+    mergedTimeline.forEach(p => {
       if (p.value > peak) peak = p.value;
       const dd = peak > 0 ? ((p.value - peak) / peak) * 100 : 0;
       if (dd < maxDD) maxDD = dd;
     });
     return Math.abs(maxDD);
-  }, [history]);
+  }, [mergedTimeline]);
 
   const historyStats = useMemo(() => {
-    if (history.length < 2) return null;
+    if (mergedTimeline.length < 2) return null;
     const changes: number[] = [];
-    for (let i = 1; i < history.length; i++) {
-      const prev = history[i - 1].value;
-      const curr = history[i].value;
+    for (let i = 1; i < mergedTimeline.length; i++) {
+      const prev = mergedTimeline[i - 1].value;
+      const curr = mergedTimeline[i].value;
       if (prev > 0) changes.push(((curr - prev) / prev) * 100);
     }
     if (!changes.length) return null;
@@ -334,10 +333,10 @@ export default function OverviewPage() {
       worstDay: worst.toFixed(2),
       avgDailyReturn: avg.toFixed(2),
       positiveDays: Math.round((changes.filter(v => v > 0).length / changes.length) * 100),
-      tradingDays: history.length,
+      tradingDays: mergedTimeline.length,
       profitRiskRatio: worst !== 0 ? Math.abs(best / worst).toFixed(2) : "–",
     };
-  }, [history]);
+  }, [mergedTimeline]);
 
   const portfolioWeightedBeta = useMemo(() => {
     if (!app.positions.length || app.portfolioTotal <= 0) return 1.0;

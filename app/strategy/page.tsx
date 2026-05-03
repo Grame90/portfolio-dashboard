@@ -50,13 +50,6 @@ const RATING_COLORS: Record<string, string> = {
   A: "#22c55e", "A-": "#22c55e", "B+": "#f59e0b", B: "#f59e0b",
 };
 
-const FORECAST_RETURNS = [
-  { year: "2024", conservative: 12, base: 18, aggressive: 26 },
-  { year: "2025", conservative: 25, base: 40, aggressive: 58 },
-  { year: "2026", conservative: 40, base: 65, aggressive: 95 },
-  { year: "2027", conservative: 56, base: 92, aggressive: 135 },
-  { year: "2028", conservative: 74, base: 122, aggressive: 180 },
-];
 
 function CircleProgress({ value, size = 90, color = "#7c3aed" }: { value: number; size?: number; color?: string }) {
   const r = size * 0.4;
@@ -260,12 +253,24 @@ export default function StrategyPage() {
     });
   }, [app.positions, app.liveQuotes]);
 
-  const forecastData = FORECAST_RETURNS.map(r => ({
-    year: r.year,
-    conservative: Math.round(forecastBase * (1 + r.conservative / 100)),
-    base: Math.round(forecastBase * (1 + r.base / 100)),
-    aggressive: Math.round(forecastBase * (1 + r.aggressive / 100)),
-  }));
+  const forecastData = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    const pv = forecastBase;
+    const pmt = app.settings.monthlyContribution;
+    const compute = (annualRate: number, months: number) => {
+      const r = annualRate / 12;
+      const fv = r > 0
+        ? pv * Math.pow(1 + r, months) + pmt * (Math.pow(1 + r, months) - 1) / r
+        : pv + pmt * months;
+      return Math.round(fv);
+    };
+    return Array.from({ length: 6 }, (_, i) => ({
+      year: i === 0 ? "Сейчас" : String(currentYear + i),
+      conservative: compute(0.07, i * 12),
+      base: compute(0.12, i * 12),
+      aggressive: compute(0.18, i * 12),
+    }));
+  }, [forecastBase, app.settings.monthlyContribution]);
 
   const today = new Date();
   const aiUpdateTime = `${String(today.getDate()).padStart(2,"0")}.${String(today.getMonth()+1).padStart(2,"0")}.${today.getFullYear()} ${String(today.getHours()).padStart(2,"0")}:${String(today.getMinutes()).padStart(2,"0")}`;
@@ -344,7 +349,13 @@ export default function StrategyPage() {
                 <Line type="monotone" dataKey="aggressive" stroke="#22c55e" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
               </LineChart>
             </ResponsiveContainer>
-            <div style={{ fontSize: 10, color: "var(--text-secondary)", textAlign: "center" }}>• Базовый сценарий</div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 12, fontSize: 10, color: "var(--text-secondary)" }}>
+              {[{ label: "Конс. 7%", color: "#3b82f6" }, { label: "Базовый 12%", color: "#7c3aed" }, { label: "Агрес. 18%", color: "#22c55e" }].map(l => (
+                <span key={l.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ width: 12, height: 2, background: l.color, display: "inline-block" }} />{l.label}
+                </span>
+              ))}
+            </div>
           </div>
 
           <div className="card">

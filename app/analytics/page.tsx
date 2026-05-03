@@ -8,6 +8,7 @@ import {
 } from "recharts";
 import { useApp } from "@/lib/AppContext";
 import { useMobile } from "@/lib/useMobile";
+import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
 import { DIVIDEND_YIELDS, loadDividends, ReceivedDividend } from "@/app/overview/page";
 const periodOptions = ["1М", "3М", "6М", "YTD", "1Г", "ВСЕ"];
 
@@ -64,6 +65,8 @@ export default function AnalyticsPage() {
       if (raw) setHistory(JSON.parse(raw));
     } catch {}
   }, []);
+
+  const { mergedTimeline } = usePortfolioHistory(app.positions, history, app.portfolioTotal, app.totalCost);
 
   const divPositions = useMemo(() => {
     return app.positions
@@ -138,14 +141,14 @@ export default function AnalyticsPage() {
   );
 
   const drawdownData = useMemo(() => {
-    if (!history.length) return [];
-    let peak = history[0].value;
-    return history.map(h => {
+    if (!mergedTimeline.length) return [];
+    let peak = mergedTimeline[0].value;
+    return mergedTimeline.map(h => {
       if (h.value > peak) peak = h.value;
       const dd = peak > 0 ? ((h.value - peak) / peak) * 100 : 0;
       return { date: h.date.slice(5), drawdown: parseFloat(dd.toFixed(2)) };
     });
-  }, [history]);
+  }, [mergedTimeline]);
 
   const drawdownStats = useMemo(() => {
     if (!drawdownData.length) return { current: 0, max: 0, avg: 0 };
@@ -193,7 +196,7 @@ export default function AnalyticsPage() {
       period === "6М" ? new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10) :
       period === "1Г" ? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10) :
       period === "YTD" ? `${new Date().getFullYear()}-01-01` : "0000-00-00";
-    const filtered = history.filter(h => h.date >= cutoff);
+    const filtered = mergedTimeline.filter(h => h.date >= cutoff);
     const filteredBm = bmHistory.filter(b => b.date >= cutoff);
     if (!filtered.length) return filteredBm.map(b => ({ date: b.date.slice(5), portfolio: 0, sp500: b.sp500, nasdaq: b.nasdaq, gold: b.gold }));
     const base = filtered[0].value;
@@ -211,17 +214,17 @@ export default function AnalyticsPage() {
         gold: bm ? parseFloat((bm.gold - baseGld).toFixed(2)) : 0,
       };
     });
-  }, [history, period, bmHistory]);
+  }, [mergedTimeline, period, bmHistory]);
 
   const portfolioReturn = useMemo(() => {
-    const filtered = period === "1М" ? history.slice(-30) :
-      period === "3М" ? history.slice(-90) :
-      period === "6М" ? history.slice(-180) :
-      period === "1Г" ? history.slice(-365) : history;
+    const filtered = period === "1М" ? mergedTimeline.slice(-30) :
+      period === "3М" ? mergedTimeline.slice(-90) :
+      period === "6М" ? mergedTimeline.slice(-180) :
+      period === "1Г" ? mergedTimeline.slice(-365) : mergedTimeline;
     if (filtered.length < 2) return null;
     const ret = (filtered[filtered.length - 1].value / filtered[0].value - 1) * 100;
     return (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%";
-  }, [history, period]);
+  }, [mergedTimeline, period]);
 
   useEffect(() => {
     const posTickers = app.positions.filter(p => p.type !== "Кэш" && p.type !== "Крипто").map(p => p.ticker);

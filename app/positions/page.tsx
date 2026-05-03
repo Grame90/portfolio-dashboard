@@ -56,12 +56,13 @@ const TICKER_BETA: Record<string, number> = {
 const TODAY_MS = new Date().getTime();
 const LS_POSITIONS = "positions-data";
 
-type SavedPosition = Pick<Position, "id"|"ticker"|"name"|"type"|"qty"|"avgPrice"|"color"|"purchaseDate"|"action">;
+type SavedPosition = Pick<Position, "id"|"ticker"|"name"|"type"|"qty"|"avgPrice"|"color"|"purchaseDate"|"action"|"broker">;
 
 function persistPositions(list: Position[]) {
   try {
-    const data: SavedPosition[] = list.map(({ id, ticker, name, type, qty, avgPrice, color, purchaseDate, action }) =>
-      ({ id, ticker, name, type, qty, avgPrice, color, purchaseDate, action })
+    const data: SavedPosition[] = list.map(({ id, ticker, name, type, qty, avgPrice, color, purchaseDate, action, broker }) =>
+      ({ id, ticker, name, type, qty, avgPrice, color, purchaseDate, action, broker })
+
     );
     localStorage.setItem(LS_POSITIONS, JSON.stringify(data));
     try { window.dispatchEvent(new CustomEvent("positions-updated")); } catch {}
@@ -76,6 +77,7 @@ function loadPositions(): Position[] {
     if (!data.length) return [];
     return recompute(data.map((d) => ({
       ...d,
+      broker: d.broker ?? "",
       color: d.type === "Кэш" ? d.color : autoColor(d.ticker),
       currentPrice: d.avgPrice,
       previousClose: d.avgPrice,
@@ -102,6 +104,7 @@ type Position = {
   action: string;
   live: boolean;
   purchaseDate: string;
+  broker?: string;
 };
 
 function recompute(positions: Position[]): Position[] {
@@ -144,7 +147,15 @@ const seed: Position[] = recompute(
 );
 
 const TODAY = new Date().toISOString().slice(0, 10);
-const emptyForm = { ticker: "", name: "", type: "ETF", qty: "", avgPrice: "", currentPrice: "", previousClose: "", color: COLORS[0], purchaseDate: TODAY };
+const emptyForm = { ticker: "", name: "", type: "ETF", qty: "", avgPrice: "", currentPrice: "", previousClose: "", color: COLORS[0], purchaseDate: TODAY, broker: "" };
+const BROKERS = ["Interactive Brokers", "Robinhood", "Schwab", "Fidelity", "TD Ameritrade", "eToro", "Binance", "Coinbase", "Tinkoff", "Другой"];
+const BROKER_COLORS = ["#7c3aed","#3b82f6","#22c55e","#f59e0b","#ef4444","#06b6d4","#ec4899","#f97316","#a855f7","#84cc16"];
+function brokerColor(name: string): string {
+  if (!name) return "#94a3b8";
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
+  return BROKER_COLORS[Math.abs(h) % BROKER_COLORS.length];
+}
 
 export default function PositionsPage() {
   const isMobile = useMobile();
@@ -160,6 +171,7 @@ export default function PositionsPage() {
   const [dropdownIdx, setDropdownIdx] = useState(-1);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [period, setPeriod] = useState("1М");
+  const [activeBroker, setActiveBroker] = useState("");
   const [chartHistory, setChartHistory] = useState<{date:string;value:number;cost:number}[]>([]);
   const lastSavedChart = useRef(0);
   const [profitMode, setProfitMode] = useState<"USD" | "%">("USD");
@@ -275,13 +287,18 @@ export default function PositionsPage() {
   const totalPnl = Math.round(total - totalCost);
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
 
+  const uniqueBrokers = useMemo(() => {
+    const s = new Set(positions.map(p => p.broker || "").filter(Boolean));
+    return [...s].sort();
+  }, [positions]);
+
   const filtered = positions.filter((p) => {
-    if (activeTab === "АКЦИИ") return p.type === "Акция";
-    if (activeTab === "ETF") return p.type === "ETF";
-    if (activeTab === "КЭШ") return p.type === "Кэш";
-    if (activeTab === "СЫРЬЁ") return p.type === "Сырьё";
-    if (activeTab === "КРИПТО") return p.type === "Крипто";
-    return true;
+    if (activeTab === "АКЦИИ") return p.type === "Акция" && (!activeBroker || (p.broker || "") === activeBroker);
+    if (activeTab === "ETF") return p.type === "ETF" && (!activeBroker || (p.broker || "") === activeBroker);
+    if (activeTab === "КЭШ") return p.type === "Кэш" && (!activeBroker || (p.broker || "") === activeBroker);
+    if (activeTab === "СЫРЬЁ") return p.type === "Сырьё" && (!activeBroker || (p.broker || "") === activeBroker);
+    if (activeTab === "КРИПТО") return p.type === "Крипто" && (!activeBroker || (p.broker || "") === activeBroker);
+    return !activeBroker || (p.broker || "") === activeBroker;
   });
 
   const bestPos = [...positions].sort((a, b) => b.pnlPct - a.pnlPct)[0];
@@ -507,6 +524,7 @@ export default function PositionsPage() {
             action: "Удерживать",
             live: false,
             purchaseDate: form.purchaseDate || new Date().toISOString().slice(0, 10),
+            broker: form.broker.trim(),
           }];
         }
         const result = recompute(next);
@@ -538,6 +556,7 @@ export default function PositionsPage() {
       action: "Удерживать",
       live: true,
       purchaseDate: form.purchaseDate,
+      broker: form.broker.trim(),
     };
     setPositions((prev) => {
       const next = recompute([...prev, newPos]);
@@ -560,6 +579,7 @@ export default function PositionsPage() {
       previousClose: String(p.previousClose),
       color: p.color,
       purchaseDate: p.purchaseDate,
+      broker: p.broker ?? "",
     });
   }
 
@@ -580,6 +600,7 @@ export default function PositionsPage() {
             color: p.type === "Кэш" ? p.color : autoColor(editForm.ticker.trim().toUpperCase() || p.ticker),
             purchaseDate: editForm.purchaseDate,
             live: editForm.type !== "Кэш",
+            broker: (editForm as any).broker?.trim() ?? p.broker ?? "",
           }
         )
       );
@@ -803,12 +824,34 @@ export default function PositionsPage() {
           </div>
         </div>
 
+        {/* Broker filter bar */}
+        {uniqueBrokers.length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", marginRight: 2 }}>Брокер:</span>
+            <button onClick={() => setActiveBroker("")} style={{
+              padding: "4px 12px", borderRadius: 20, border: `1px solid ${!activeBroker ? "var(--accent)" : "var(--border)"}`, cursor: "pointer", fontSize: 11, fontWeight: 600,
+              background: !activeBroker ? "rgba(124,58,237,0.15)" : "transparent",
+              color: !activeBroker ? "var(--accent-light)" : "var(--text-secondary)", transition: "all 0.15s",
+            }}>Все</button>
+            {uniqueBrokers.map(b => (
+              <button key={b} onClick={() => setActiveBroker(b === activeBroker ? "" : b)} style={{
+                padding: "4px 12px", borderRadius: 20, border: `1px solid ${activeBroker === b ? brokerColor(b) : "var(--border)"}`, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                background: activeBroker === b ? `${brokerColor(b)}22` : "transparent",
+                color: activeBroker === b ? brokerColor(b) : "var(--text-secondary)", transition: "all 0.15s",
+              }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: brokerColor(b), display: "inline-block", marginRight: 5 }} />
+                {b}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Add form */}
         {/* ── Instrument form ── */}
         {showForm && (
           <div className="card" style={{ padding: 18 }}>
             <div className="card-title">Новый инструмент</div>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr 1fr 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
               <div style={{ position: "relative" }}>
                 <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>
                   Тикер *{searchLoading && <span style={{ marginLeft: 5, color: "var(--accent-light)" }}>…</span>}
@@ -854,6 +897,13 @@ export default function PositionsPage() {
                     style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }} />
                 </div>
               ))}
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>Брокер</div>
+                <input list="brokers-list" value={form.broker} onChange={(e) => setForm({ ...form, broker: e.target.value })}
+                  placeholder="Interactive Brokers"
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }} />
+                <datalist id="brokers-list">{BROKERS.map(b => <option key={b} value={b} />)}</datalist>
+              </div>
               <button onClick={addPosition} style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "var(--accent)", color: "white", whiteSpace: "nowrap", alignSelf: "flex-end" }}>
                 Добавить
               </button>
@@ -866,7 +916,7 @@ export default function PositionsPage() {
         {showCashForm && (
           <div className="card" style={{ padding: 18 }}>
             <div className="card-title">Добавить кэш</div>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>Валюта *</div>
                 <select value={cashCurrency} onChange={e => {
@@ -902,6 +952,12 @@ export default function PositionsPage() {
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>Дата</div>
                 <input type="date" value={form.purchaseDate} onChange={e => setForm({ ...form, purchaseDate: e.target.value })}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>Брокер</div>
+                <input list="brokers-list" value={form.broker} onChange={e => setForm({ ...form, broker: e.target.value })}
+                  placeholder="Interactive Brokers"
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }} />
               </div>
               <button onClick={addPosition} style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "var(--accent)", color: "white", whiteSpace: "nowrap", alignSelf: "flex-end" }}>
@@ -989,7 +1045,12 @@ export default function PositionsPage() {
                         )}
                       </td>
                       <td style={{ padding: "7px 8px" }}>
-                        <span className="badge badge-purple">{p.type}</span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                          <span className="badge badge-purple">{p.type}</span>
+                          {p.broker && (
+                            <span style={{ fontSize: 9, fontWeight: 600, padding: "1px 6px", borderRadius: 4, background: `${brokerColor(p.broker)}22`, color: brokerColor(p.broker), whiteSpace: "nowrap" }}>{p.broker}</span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: "7px 8px", color: "var(--text-secondary)", fontSize: 11, whiteSpace: "nowrap" }}>
                         {p.purchaseDate ? new Date(p.purchaseDate).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–"}
@@ -1289,11 +1350,19 @@ export default function PositionsPage() {
           ))}
         </div>
 
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>Тип актива</div>
-          <Select value={editForm.type} onValueChange={(v) => setEditForm({ ...editForm, type: v })}>
-            {TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-          </Select>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>Тип актива</div>
+            <Select value={editForm.type} onValueChange={(v) => setEditForm({ ...editForm, type: v })}>
+              {TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </Select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 6 }}>Брокер</div>
+            <input list="brokers-list" value={(editForm as any).broker ?? ""} onChange={(e) => setEditForm({ ...editForm, broker: e.target.value } as any)}
+              placeholder="Interactive Brokers"
+              style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 13, boxSizing: "border-box" }} />
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>

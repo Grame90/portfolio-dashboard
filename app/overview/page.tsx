@@ -424,6 +424,32 @@ export default function OverviewPage() {
     ];
   }, [targetRows, app.positions, app.liveQuotes, portfolioMaxDrawdown]);
 
+  const brokerStats = useMemo(() => {
+    const map: Record<string, { total: number; cost: number; count: number; prev: number }> = {};
+    for (const p of app.positions) {
+      const key = p.broker?.trim() || "";
+      if (!key) continue;
+      const price = app.liveQuotes[p.ticker]?.current || p.avgPrice;
+      const prevPrice = app.liveQuotes[p.ticker]?.previousClose || p.avgPrice;
+      if (!map[key]) map[key] = { total: 0, cost: 0, count: 0, prev: 0 };
+      map[key].total += p.qty * price;
+      map[key].cost  += p.qty * p.avgPrice;
+      map[key].prev  += p.qty * prevPrice;
+      map[key].count += 1;
+    }
+    return Object.entries(map)
+      .map(([name, s]) => ({
+        name, total: Math.round(s.total), cost: Math.round(s.cost),
+        pnl: Math.round(s.total - s.cost),
+        pnlPct: s.cost > 0 ? ((s.total - s.cost) / s.cost) * 100 : 0,
+        dailyChange: Math.round(s.total - s.prev),
+        dailyChangePct: s.prev > 0 ? ((s.total - s.prev) / s.prev) * 100 : 0,
+        count: s.count,
+        share: livePortfolioTotal > 0 ? (s.total / livePortfolioTotal) * 100 : 0,
+      }))
+      .sort((a, b) => b.total - a.total);
+  }, [app.positions, app.liveQuotes, livePortfolioTotal]);
+
   return (
     <div style={{ minHeight: "100vh" }}>
       <PageHeader title="ОБЗОР" subtitle="Главная сводка по портфелю" />
@@ -504,6 +530,42 @@ export default function OverviewPage() {
             );
           })()}
         </div>
+
+        {/* Broker cards */}
+        {brokerStats.length > 0 && (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Портфели по брокерам</div>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${Math.min(brokerStats.length, 4)}, 1fr)`, gap: 10 }}>
+              {brokerStats.map(b => {
+                const color = (() => {
+                  const BCOLORS = ["#7c3aed","#3b82f6","#22c55e","#f59e0b","#ef4444","#06b6d4","#ec4899","#f97316","#a855f7","#84cc16"];
+                  let h = 0;
+                  for (let i = 0; i < b.name.length; i++) h = (h * 31 + b.name.charCodeAt(i)) & 0xffffffff;
+                  return BCOLORS[Math.abs(h) % BCOLORS.length];
+                })();
+                return (
+                  <div key={b.name} className="card" style={{ borderLeft: `3px solid ${color}`, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
+                      <div style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-muted)" }}>{b.count} поз.</div>
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 700 }}>${b.total.toLocaleString("en-US")}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+                      <div className={b.pnl >= 0 ? "positive" : "negative"} style={{ fontSize: 12, fontWeight: 600 }}>
+                        {b.pnl >= 0 ? "+" : ""}{b.pnl.toLocaleString("en-US")} ({b.pnlPct >= 0 ? "+" : ""}{b.pnlPct.toFixed(2)}%)
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-secondary)" }}>{b.share.toFixed(1)}% портфеля</div>
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 11, color: b.dailyChange >= 0 ? "#22c55e" : "#ef4444" }}>
+                      День: {b.dailyChange >= 0 ? "+" : ""}{b.dailyChange.toLocaleString("en-US")} ({b.dailyChangePct >= 0 ? "+" : ""}{b.dailyChangePct.toFixed(2)}%)
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Dividends row */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>

@@ -95,6 +95,13 @@ function safeSet(key: string, val: unknown) {
   try { if (val != null) localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
+// Only sync to cloud from the production domain — never from localhost
+function isProduction(): boolean {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname;
+  return host !== "localhost" && host !== "127.0.0.1" && !host.startsWith("192.168.");
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
 
@@ -111,6 +118,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ── Supabase helpers ────────────────────────────────────────────────────────
 
   async function loadFromCloud(uid: string) {
+    // On localhost — skip cloud entirely, use localStorage only
+    if (!isProduction()) {
+      setPositions(readPositions());
+      setSettings(readSettings());
+      return;
+    }
+
     const { data } = await supabase
       .from("user_data")
       .select("*")
@@ -118,21 +132,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .single();
 
     if (data) {
+      const cloudPositions: StoredPosition[] = data.positions ?? [];
+      const localPositions = readPositions();
+
+      // Cloud is empty but local has data → upload local to cloud
+      if (cloudPositions.length === 0 && localPositions.length > 0) {
+        setPositions(localPositions);
+        setSettings(readSettings());
+        setTimeout(syncToCloud, 3000);
+        return;
+      }
+
       if (data.positions)      safeSet(LS_POSITIONS, data.positions);
       if (data.settings)       safeSet(LS_SETTINGS, data.settings);
       LS_EXTRA_KEYS.forEach(k => { if (data[k.replace(/-/g, "_")]) safeSet(k, data[k.replace(/-/g, "_")]); });
 
-      setPositions(data.positions ?? []);
+      setPositions(cloudPositions);
       setSettings({ ...DEFAULT_SETTINGS, ...(data.settings ?? {}) });
     } else {
-      // First login — load from localStorage if any
+      // No cloud row yet — load local, then sync up
       setPositions(readPositions());
       setSettings(readSettings());
+      setTimeout(syncToCloud, 3000);
     }
   }
 
   async function syncToCloud() {
     if (!user) return;
+    if (!isProduction()) return; // never write to cloud from localhost
+    const positionsToSync = safeGet(LS_POSITIONS) ?? [];
+    if (positionsToSync.length === 0 && (safeGet(LS_SETTINGS) === null)) return; // never overwrite cloud with nothing
     try {
       const { error } = await supabase.from("user_data").upsert({
         user_id: user.id,

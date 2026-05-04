@@ -11,39 +11,6 @@ import { useApp } from "@/lib/AppContext";
 import { useMobile } from "@/lib/useMobile";
 import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
 
-// ── Drawdown series builders ───────────────────────────────────────────────
-// Historical 365-day path: cumulative return → peak-to-trough drawdown
-// annualVol: portfolio annualised volatility (e.g. 0.15 = 15%)
-// finalPnlPct: actual portfolio P&L % today (e.g. +12.5 or -3.2)
-function buildHistoricalDrawdown(annualVol: number, finalPnlPct: number, days: number) {
-  const result: { date: string; drawdown: number }[] = [];
-  const now = new Date();
-  const dailyVol = (annualVol / Math.sqrt(252)) * 100; // daily % move
-  const dailyDrift = finalPnlPct / days;               // linear drift to match real P&L
-
-  let cumReturn = 0;
-  let peakReturn = 0;
-
-  for (let i = days; i >= 0; i--) {
-    const t = days - i;
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const label = d.toLocaleDateString("ru-RU", { day: "2-digit", month: "short" });
-
-    // Deterministic noise: two sine waves at different frequencies
-    const noise = Math.sin(t * 0.21 + 1.3) * dailyVol * 0.9
-                + Math.cos(t * 0.09 + 2.1) * dailyVol * 0.5
-                + Math.sin(t * 0.47 + 0.6) * dailyVol * 0.3;
-
-    cumReturn += dailyDrift + noise;
-    if (cumReturn > peakReturn) peakReturn = cumReturn;
-
-    const drawdown = Math.max(-50, Math.min(0, cumReturn - peakReturn));
-    result.push({ date: label, drawdown: parseFloat(drawdown.toFixed(2)) });
-  }
-  return result;
-}
-
 // Potential drawdown: forward-looking VaR fan for 90 days
 // Shows expected path + 68% / 95% confidence bands
 function buildPotentialDrawdown(annualVol: number, days: number) {
@@ -132,7 +99,7 @@ export default function RisksPage() {
     try { const r = localStorage.getItem("portfolio-chart-history"); if (r) setLsHistory(JSON.parse(r)); } catch {}
   }, []);
 
-  const { mergedTimeline } = usePortfolioHistory(positions, lsHistory, total, app.totalCost);
+  const { mergedTimeline, histLoaded } = usePortfolioHistory(positions, lsHistory, total, app.totalCost);
 
   const { historicalDrawdown, maxHistDrawdown } = useMemo(() => {
     if (!mergedTimeline.length) return { historicalDrawdown: [] as { date: string; drawdown: number }[], maxHistDrawdown: 0 };
@@ -308,7 +275,7 @@ export default function RisksPage() {
         if (drawdown < -15) reasons.push("Просадка " + drawdown.toFixed(1) + "%");
         if (TYPE_VOL[p.type] >= 0.25) reasons.push("Высокая волатильность");
         const risk = share > 25 || p.type === "Крипто" ? "Высокий" : share > 15 || drawdown < -10 ? "Средний" : null;
-        return { ticker: p.ticker, name: p.name, share, reason: reasons[0] ?? "", risk, drawdown };
+        return { id: p.id, ticker: p.ticker, name: p.name, share, reason: reasons[0] ?? "", risk, drawdown };
       })
       .filter(p => p.risk !== null)
       .sort((a, b) => b.share - a.share);
@@ -666,10 +633,26 @@ export default function RisksPage() {
           </div>
 
           <div className="card">
-            <div className="card-title">Drawdown анализ (365 дней)</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div className="card-title" style={{ margin: 0 }}>
+                Динамика просадки
+                {histLoaded && mergedTimeline.length > 0 && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400, marginLeft: 6 }}>
+                    {mergedTimeline[0]?.date} — {mergedTimeline[mergedTimeline.length - 1]?.date}
+                  </span>
+                )}
+              </div>
+              {!histLoaded && !isEmpty && (
+                <span style={{ fontSize: 10, color: "var(--accent-light)", animation: "pulse 1.5s infinite" }}>Загрузка данных…</span>
+              )}
+            </div>
             {isEmpty ? (
               <div style={{ height: 152, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
                 Нет данных
+              </div>
+            ) : !histLoaded && historicalDrawdown.length === 0 ? (
+              <div style={{ height: 152, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
+                Загрузка исторических цен…
               </div>
             ) : (
               <>
@@ -688,7 +671,8 @@ export default function RisksPage() {
                     <ReferenceLine y={-10} stroke="#ef4444" strokeWidth={1} strokeDasharray="4 3" strokeOpacity={0.5}
                       label={{ value: "-10%", position: "insideTopRight", fill: "#ef4444", fontSize: 8 }} />
                     <XAxis dataKey="date" tick={{ fontSize: 9, fill: "var(--text-muted)" }}
-                           tickLine={false} axisLine={false} interval={72} />
+                           tickLine={false} axisLine={false}
+                           interval={Math.max(1, Math.floor(historicalDrawdown.length / 10))} />
                     <YAxis
                       tick={{ fontSize: 9, fill: "var(--text-muted)" }}
                       tickLine={false} axisLine={false}
@@ -767,7 +751,7 @@ export default function RisksPage() {
               </thead>
               <tbody>
                 {highRiskRows.length > 0 ? highRiskRows.map((p) => (
-                  <tr key={p.ticker} style={{ borderBottom: "1px solid var(--border)" }}>
+                  <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
                     <td style={{ padding: "7px 8px", fontWeight: 700, color: "var(--accent-light)" }}>{p.ticker}</td>
                     <td style={{ padding: "7px 8px", color: "var(--text-secondary)", fontSize: 11 }}>{p.reason || "—"}</td>
                     <td style={{ padding: "7px 8px" }}>

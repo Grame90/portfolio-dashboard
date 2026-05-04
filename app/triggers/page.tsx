@@ -85,31 +85,47 @@ export default function TriggersPage() {
 
   const evaluatedTriggers = triggerList.map(t => {
     if (t.status === "Неактивен") return { ...t, liveValue: t.currentValue, fired: false, progress: 0 };
+
     const livePrice = app.liveQuotes[t.ticker]?.current ?? 0;
     const prevClose = app.liveQuotes[t.ticker]?.previousClose ?? 0;
+    const quotesReady = app.quoteStatus === "ok" || app.quoteStatus === "error";
 
     if (t.type === "Цена ниже") {
       const target = parseFloat(t.targetValue);
       const fired = livePrice > 0 && livePrice < target;
-      const progress = livePrice > 0 ? Math.min(100, Math.max(0, ((target - livePrice + target * 0.2) / (target * 0.2)) * 100)) : 0;
-      return { ...t, liveValue: livePrice > 0 ? livePrice.toFixed(2) : "–", fired, progress };
+      const pct = livePrice > 0 && target > 0 ? ((target - livePrice) / (target * 0.2)) * 100 : 0;
+      const progress = Math.min(100, Math.max(0, pct));
+      return { ...t, liveValue: livePrice > 0 ? livePrice.toFixed(2) : (quotesReady ? "–" : "…"), fired, progress };
     }
     if (t.type === "Цена выше") {
       const target = parseFloat(t.targetValue);
       const fired = livePrice > 0 && livePrice > target;
-      const progress = livePrice > 0 ? Math.min(100, (livePrice / target) * 100) : 0;
-      return { ...t, liveValue: livePrice > 0 ? livePrice.toFixed(2) : "–", fired, progress };
+      const progress = livePrice > 0 && target > 0 ? Math.min(100, (livePrice / target) * 100) : 0;
+      return { ...t, liveValue: livePrice > 0 ? livePrice.toFixed(2) : (quotesReady ? "–" : "…"), fired, progress };
     }
     if (t.type === "Просадка %") {
       const pos = app.positions.find(p => p.ticker === t.ticker);
       const drawdown = pos && livePrice > 0 ? ((livePrice - pos.avgPrice) / pos.avgPrice) * 100 : 0;
       const target = parseFloat(t.targetValue);
-      return { ...t, liveValue: `${drawdown.toFixed(2)}%`, fired: drawdown < -target, progress: Math.min(100, (Math.abs(Math.min(0, drawdown)) / target) * 100) };
+      const hasData = pos && livePrice > 0;
+      const progress = hasData ? Math.min(100, (Math.abs(Math.min(0, drawdown)) / target) * 100) : 0;
+      return { ...t, liveValue: hasData ? `${drawdown.toFixed(2)}%` : (quotesReady ? "–" : "…"), fired: drawdown < -target && hasData, progress };
     }
     if (t.type === "Рост %") {
       const growth = prevClose > 0 ? ((livePrice - prevClose) / prevClose) * 100 : 0;
       const target = parseFloat(t.targetValue);
-      return { ...t, liveValue: `${growth.toFixed(2)}%`, fired: growth > target, progress: Math.min(100, (Math.max(0, growth) / target) * 100) };
+      const hasData = livePrice > 0 && prevClose > 0;
+      const progress = hasData ? Math.min(100, (Math.max(0, growth) / target) * 100) : 0;
+      return { ...t, liveValue: hasData ? `${growth.toFixed(2)}%` : (quotesReady ? "–" : "…"), fired: growth > target && hasData, progress };
+    }
+    if (t.type === "Просадка портфеля") {
+      const portfolioDrawdown = app.totalCost > 0
+        ? ((app.portfolioTotal - app.totalCost) / app.totalCost) * 100
+        : 0;
+      const target = parseFloat(t.targetValue);
+      const fired = portfolioDrawdown < -target;
+      const progress = Math.min(100, (Math.abs(Math.min(0, portfolioDrawdown)) / target) * 100);
+      return { ...t, liveValue: `${portfolioDrawdown.toFixed(2)}%`, fired, progress };
     }
     return { ...t, liveValue: livePrice > 0 ? livePrice.toFixed(2) : t.currentValue, fired: false, progress: 0 };
   });
@@ -158,6 +174,10 @@ export default function TriggersPage() {
     setTriggerList((prev) => [newTrigger, ...prev]);
     setFormData({ ticker: "", type: "Цена ниже", targetValue: "", priority: "Средний" });
     setShowForm(false);
+  }
+
+  function activateAll() {
+    setTriggerList(prev => prev.map(t => ({ ...t, status: "Активен" })));
   }
 
   function resetToDefaults() {
@@ -222,6 +242,15 @@ export default function TriggersPage() {
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
+              onClick={activateAll}
+              style={{
+                padding: "8px 14px", borderRadius: 8, border: "1px solid #22c55e", cursor: "pointer", fontSize: 12, fontWeight: 600,
+                background: "rgba(34,197,94,0.1)", color: "#22c55e",
+              }}
+            >
+              ▶ Активировать все
+            </button>
+            <button
               onClick={resetToDefaults}
               style={{
                 padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)", cursor: "pointer", fontSize: 12, fontWeight: 600,
@@ -254,7 +283,7 @@ export default function TriggersPage() {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {app.positions.filter(p => p.type !== "Кэш").map(p => (
                     <button
-                      key={p.ticker}
+                      key={p.id}
                       onClick={() => setFormData(f => ({ ...f, ticker: p.ticker }))}
                       style={{
                         padding: "3px 10px", borderRadius: 20, border: "1px solid var(--border)",
@@ -352,7 +381,16 @@ export default function TriggersPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 12 }}>
           {/* Triggers table */}
           <div className="card">
-            <div className="card-title">Список триггеров</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div className="card-title" style={{ margin: 0 }}>Список триггеров</div>
+              <span style={{
+                fontSize: 10, padding: "2px 8px", borderRadius: 20, fontWeight: 600,
+                background: app.quoteStatus === "ok" ? "rgba(34,197,94,0.12)" : app.quoteStatus === "loading" ? "rgba(245,158,11,0.12)" : "rgba(148,163,184,0.12)",
+                color: app.quoteStatus === "ok" ? "#22c55e" : app.quoteStatus === "loading" ? "#f59e0b" : "#94a3b8",
+              }}>
+                {app.quoteStatus === "ok" ? "Котировки ✓" : app.quoteStatus === "loading" ? "Загрузка котировок…" : "Ожидание котировок"}
+              </span>
+            </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>

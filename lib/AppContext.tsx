@@ -134,7 +134,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function syncToCloud() {
     if (!user) return;
     try {
-      await supabase.from("user_data").upsert({
+      const { error } = await supabase.from("user_data").upsert({
         user_id: user.id,
         positions:        safeGet(LS_POSITIONS) ?? [],
         settings:         safeGet(LS_SETTINGS) ?? {},
@@ -145,7 +145,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         dashboard_notifications: safeGet("dashboard-notifications") ?? [],
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
-    } catch {}
+      if (error) console.error("[Supabase sync error]", error.message, error.code);
+    } catch (e) {
+      console.error("[Supabase sync exception]", e);
+    }
   }
 
   function scheduleSyncToCloud() {

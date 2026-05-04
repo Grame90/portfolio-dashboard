@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useMobile } from "@/lib/useMobile";
 import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
+import { useApp } from "@/lib/AppContext";
 import ApexChart from "@/components/ApexChart";
 import {
   BarChart, Bar,
@@ -138,6 +139,7 @@ function fmtDate(iso: string): string { const [,m,day] = iso.split("-"); return 
 
 export default function PortfolioPage() {
   const isMobile = useMobile();
+  const app = useApp();
   const [period, setPeriod] = useState("1М");
   const [history, setHistory] = useState<ChartPoint[]>([]);
   const [positions, setPositions] = useState<LivePosition[]>([]);
@@ -197,6 +199,16 @@ export default function PortfolioPage() {
       setQuoteStatus("error");
     }
   }, []);
+
+  // Sync live quotes from AppContext so all pages show the same prices
+  useEffect(() => {
+    if (!Object.keys(app.liveQuotes).length) return;
+    setPositions(prev => recompute(prev.map(p => {
+      const q = app.liveQuotes[p.ticker];
+      if (!q || q.current <= 0) return p;
+      return { ...p, currentPrice: q.current, previousClose: q.previousClose };
+    })));
+  }, [app.liveQuotes]);
 
   const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[] }>>({});
   const [histLoaded, setHistLoaded] = useState(false);
@@ -957,7 +969,7 @@ export default function PortfolioPage() {
                     };
 
                     return (
-                      <tr key={p.ticker} style={{ borderBottom: "1px solid var(--border)", background: tickBg, transition: "background 0.6s" }}>
+                      <tr key={p.id} style={{ borderBottom: "1px solid var(--border)", background: tickBg, transition: "background 0.6s" }}>
                         {colOrder
                           .map((id) => ALL_COLS.find((c) => c.id === id)!)
                           .filter((c) => c && visibleCols.has(c.id))
@@ -1026,7 +1038,7 @@ export default function PortfolioPage() {
               const rows = positions.map(p => {
                 const target = p.type === "Кэш" ? p.share : eqTarget;
                 const dev = p.share - target;
-                return { ticker: p.ticker, target, liveShare: p.share, dev, color: p.color, type: p.type };
+                return { id: p.id, ticker: p.ticker, target, liveShare: p.share, dev, color: p.color, type: p.type };
               });
               const ok = rows.filter(r => r.type !== "Кэш" && Math.abs(r.dev) <= 1.5).length;
               const under = rows.filter(r => r.type !== "Кэш" && r.dev < -1.5).length;
@@ -1052,7 +1064,7 @@ export default function PortfolioPage() {
                       const targetPct = Math.min(100, (t.target / maxScale) * 100);
 
                       return (
-                        <div key={t.ticker} style={{ padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: 8, border: `1px solid var(--border)` }}>
+                        <div key={t.id} style={{ padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: 8, border: `1px solid var(--border)` }}>
                           {/* Top row */}
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -1163,7 +1175,7 @@ export default function PortfolioPage() {
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5 }}>Инструменты:</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                         {allTickers.map(p => (
-                          <button key={p.ticker} onClick={() => setLadderTickers(prev => prev.includes(p.ticker) ? prev.filter(t => t !== p.ticker) : [...prev, p.ticker])}
+                          <button key={p.id} onClick={() => setLadderTickers(prev => prev.includes(p.ticker) ? prev.filter(t => t !== p.ticker) : [...prev, p.ticker])}
                             style={{ padding: "3px 8px", borderRadius: 5, border: `1px solid ${ladderTickers.includes(p.ticker) ? p.color : "var(--border)"}`, background: ladderTickers.includes(p.ticker) ? `${p.color}22` : "transparent", color: ladderTickers.includes(p.ticker) ? p.color : "var(--text-secondary)", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>
                             {p.ticker}
                           </button>
@@ -1188,7 +1200,7 @@ export default function PortfolioPage() {
                       {selectedPositions.map(p => {
                         const current = p.currentPrice || p.avgPrice;
                         return (
-                          <tr key={p.ticker} style={{ borderBottom: "1px solid var(--border)" }}>
+                          <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
                             <td style={{ padding: "6px", fontWeight: 700, color: p.color }}>{p.ticker}</td>
                             <td style={{ padding: "6px", textAlign: "right", fontWeight: 600 }}>{current.toFixed(2)}</td>
                             {levels.map(l => (

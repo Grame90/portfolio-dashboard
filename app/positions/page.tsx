@@ -148,7 +148,7 @@ const seed: Position[] = recompute(
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const emptyForm = { ticker: "", name: "", type: "ETF", qty: "", avgPrice: "", currentPrice: "", previousClose: "", color: COLORS[0], purchaseDate: TODAY, broker: "" };
-const BROKERS = ["Interactive Brokers", "Robinhood", "Schwab", "Fidelity", "TD Ameritrade", "eToro", "Binance", "Coinbase", "Tinkoff", "Другой"];
+const BROKERS = ["Interactive Brokers", "Binance", "Bybit", "Midas"];
 const BROKER_COLORS = ["#7c3aed","#3b82f6","#22c55e","#f59e0b","#ef4444","#06b6d4","#ec4899","#f97316","#a855f7","#84cc16"];
 function brokerColor(name: string): string {
   if (!name) return "#94a3b8";
@@ -172,6 +172,8 @@ export default function PositionsPage() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [period, setPeriod] = useState("1М");
   const [activeBroker, setActiveBroker] = useState("");
+  const [sortKey, setSortKey] = useState<keyof Position | "">("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [chartHistory, setChartHistory] = useState<{date:string;value:number;cost:number}[]>([]);
   const lastSavedChart = useRef(0);
   const [profitMode, setProfitMode] = useState<"USD" | "%">("USD");
@@ -300,6 +302,24 @@ export default function PositionsPage() {
     if (activeTab === "КРИПТО") return p.type === "Крипто" && (!activeBroker || (p.broker || "") === activeBroker);
     return !activeBroker || (p.broker || "") === activeBroker;
   });
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return filtered;
+    return [...filtered].sort((a, b) => {
+      const av = a[sortKey as keyof Position];
+      const bv = b[sortKey as keyof Position];
+      if (typeof av === "number" && typeof bv === "number")
+        return sortDir === "asc" ? av - bv : bv - av;
+      return sortDir === "asc"
+        ? String(av ?? "").localeCompare(String(bv ?? ""))
+        : String(bv ?? "").localeCompare(String(av ?? ""));
+    });
+  }, [filtered, sortKey, sortDir]);
+
+  function handleSort(key: keyof Position) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("desc"); }
+  }
 
   const bestPos = [...positions].sort((a, b) => b.pnlPct - a.pnlPct)[0];
   const worstPos = [...positions].sort((a, b) => a.pnlPct - b.pnlPct)[0];
@@ -987,6 +1007,16 @@ export default function PositionsPage() {
                 <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>
                   {market.etTime} ET
                 </span>
+                {/* Local clock */}
+                <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>
+                  · {market.localTime} Местное
+                </span>
+                {/* Next session hint */}
+                {market.nextLabel && market.state !== "open" && (
+                  <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 500 }}>
+                    · {market.nextLabel}
+                  </span>
+                )}
                 {/* Last price timestamp from Finnhub */}
                 {lastPriceT > 0 && (
                   <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
@@ -1007,13 +1037,35 @@ export default function PositionsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                 <thead>
                   <tr style={{ color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>
-                    {["#", "Тикер", "Инструмент", "Тип", "Дата покупки", "Кол-во", "Ср.цена", "Тек.цена", "Стоимость", "Прибыль / Убыток", "Доля", ""].map((h) => (
-                      <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" }}>{h}</th>
+                    {([
+                      { label: "#",                   key: "" as const },
+                      { label: "Тикер",               key: "ticker" as keyof Position },
+                      { label: "Инструмент",          key: "name" as keyof Position },
+                      { label: "Тип",                 key: "type" as keyof Position },
+                      { label: "Дата покупки",        key: "purchaseDate" as keyof Position },
+                      { label: "Кол-во",              key: "qty" as keyof Position },
+                      { label: "Ср.цена",             key: "avgPrice" as keyof Position },
+                      { label: "Тек.цена",            key: "currentPrice" as keyof Position },
+                      { label: "Стоимость",           key: "value" as keyof Position },
+                      { label: "Прибыль / Убыток",    key: "pnl" as keyof Position },
+                      { label: "Доля",                key: "share" as keyof Position },
+                      { label: "",                    key: "" as const },
+                    ] as { label: string; key: keyof Position | "" }[]).map((h) => (
+                      <th key={h.label} onClick={h.key ? () => handleSort(h.key as keyof Position) : undefined}
+                        style={{ padding: "6px 8px", textAlign: "left", fontWeight: 600, fontSize: 11, whiteSpace: "nowrap",
+                          cursor: h.key ? "pointer" : "default", userSelect: "none",
+                          color: sortKey === h.key ? "var(--accent-light)" : "var(--text-secondary)",
+                        }}>
+                        {h.label}
+                        {h.key && <span style={{ marginLeft: 3, fontSize: 9, opacity: sortKey === h.key ? 1 : 0.3 }}>
+                          {sortKey === h.key ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+                        </span>}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p, i) => (
+                  {sorted.map((p, i) => (
                     <tr key={p.id} style={{ borderBottom: "1px solid var(--border)", transition: "background 0.3s" }}>
                       <td style={{ padding: "7px 8px", color: "var(--text-secondary)" }}>{i + 1}</td>
                       <td style={{ padding: "7px 8px" }}>

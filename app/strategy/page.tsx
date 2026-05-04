@@ -249,7 +249,7 @@ export default function StrategyPage() {
         signal = "ДЕРЖАТЬ"; color = "#7c3aed"; confidence = 80;
         reason = `Позиция в норме, P&L ${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%`;
       }
-      return { ticker: p.ticker, signal, color, confidence, reason };
+      return { id: p.id, ticker: p.ticker, signal, color, confidence, reason };
     });
   }, [app.positions, app.liveQuotes]);
 
@@ -489,7 +489,7 @@ export default function StrategyPage() {
               {liveSignals.length === 0 ? (
                 <div style={{ color: "var(--text-muted)", fontSize: 12, padding: "8px 0" }}>Добавьте позиции для AI-сигналов</div>
               ) : liveSignals.map((s) => (
-                <div key={s.ticker} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: 8 }}>
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: 8 }}>
                   <div style={{ width: 20, height: 20, borderRadius: "50%", background: s.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "white" }}>
                     {s.signal === "ДОКУПИТЬ" ? "↑" : s.signal === "СНИЗИТЬ" ? "↓" : s.signal === "ДЕРЖАТЬ" ? "→" : "✕"}
                   </div>

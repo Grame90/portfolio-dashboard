@@ -161,9 +161,9 @@ export default function OverviewPage() {
       const q = app.liveQuotes[p.ticker];
       const hasLive = q && q.previousClose > 0 && q.current > 0;
       const dayChg = hasLive ? ((q.current - q.previousClose) / q.previousClose) * 100 : null;
-      return { ticker: p.ticker, dayChg, color: p.color, hasLive };
+      return { id: p.id, ticker: p.ticker, dayChg, color: p.color, hasLive };
     })
-    .filter(p => p.hasLive && p.dayChg !== null) as { ticker: string; dayChg: number; color: string; hasLive: boolean }[];
+    .filter(p => p.hasLive && p.dayChg !== null) as { id: number; ticker: string; dayChg: number; color: string; hasLive: boolean }[];
   const quotesLoaded = livePosStats.length > 0;
   const growthLeaders  = [...livePosStats].sort((a, b) => b.dayChg - a.dayChg).slice(0, 5);
   const declineLeaders = [...livePosStats].sort((a, b) => a.dayChg - b.dayChg).slice(0, 5);
@@ -227,7 +227,7 @@ export default function OverviewPage() {
         const val = p.qty * price;
         const yieldPct = DIVIDEND_YIELDS[p.ticker] ?? 0;
         const annual = val * yieldPct / 100;
-        return { ticker: p.ticker, yieldPct, annual, quarterly: annual / 4, val };
+        return { id: p.id, ticker: p.ticker, yieldPct, annual, quarterly: annual / 4, val };
       })
       .filter(p => p.yieldPct > 0)
       .sort((a, b) => b.annual - a.annual);
@@ -385,7 +385,7 @@ export default function OverviewPage() {
       const price = app.liveQuotes[p.ticker]?.current || p.avgPrice;
       const liveShare = app.portfolioTotal > 0 ? (p.qty * price / app.portfolioTotal) * 100 : 0;
       const target = p.type === "Кэш" ? liveShare : eqTarget;
-      return { ticker: p.ticker, name: p.name, liveShare, target, deviation: liveShare - target };
+      return { id: p.id, ticker: p.ticker, name: p.name, liveShare, target, deviation: liveShare - target };
     });
   }, [app.positions, app.liveQuotes, app.portfolioTotal]);
 
@@ -612,7 +612,7 @@ export default function OverviewPage() {
                 </thead>
                 <tbody>
                   {divPositions.slice(0, 6).map(p => (
-                    <tr key={p.ticker} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "5px 6px", fontWeight: 700, color: "var(--accent-light)" }}>{p.ticker}</td>
                       <td style={{ padding: "5px 6px", textAlign: "right", color: "#22c55e", fontWeight: 600 }}>{p.yieldPct.toFixed(2)}%</td>
                       <td style={{ padding: "5px 6px", textAlign: "right" }}>${Math.round(p.annual).toLocaleString("en-US")}</td>
@@ -855,7 +855,7 @@ export default function OverviewPage() {
                   <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Нет позиций в плюсе</div>
                 )}
                 {growthLeaders.filter(l => l.dayChg > 0).map((l) => (
-                  <div key={l.ticker} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <div style={{ width: 6, height: 6, borderRadius: "50%", background: l.color }} />
                       <span style={{ fontWeight: 700, fontSize: 13 }}>{l.ticker}</span>
@@ -877,7 +877,7 @@ export default function OverviewPage() {
                   <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Нет позиций в минусе</div>
                 )}
                 {declineLeaders.filter(l => l.dayChg < 0).map((l) => (
-                  <div key={l.ticker} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <div style={{ width: 6, height: 6, borderRadius: "50%", background: l.color }} />
                       <span style={{ fontWeight: 700, fontSize: 13 }}>{l.ticker}</span>
@@ -972,7 +972,7 @@ export default function OverviewPage() {
                     const deviation = t.deviation;
                     const status = deviation > 1.5 ? "Перевес" : deviation < -1.5 ? "Недовес" : "Норма";
                     return (
-                      <tr key={t.ticker} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <tr key={t.id} style={{ borderBottom: "1px solid var(--border)" }}>
                         <td style={{ padding: "6px 8px", fontWeight: 600 }}>{t.ticker}</td>
                         <td style={{ padding: "6px 8px" }}>{t.liveShare.toFixed(2)}%</td>
                         <td style={{ padding: "6px 8px", color: "var(--text-secondary)" }}>{t.target.toFixed(2)}%</td>

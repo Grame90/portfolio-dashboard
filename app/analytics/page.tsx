@@ -76,7 +76,7 @@ export default function AnalyticsPage() {
         const val = p.qty * price;
         const yieldPct = DIVIDEND_YIELDS[p.ticker] ?? 0;
         const annual = val * yieldPct / 100;
-        return { ticker: p.ticker, yieldPct, annual, monthly: annual / 12, quarterly: annual / 4, val, qty: p.qty };
+        return { id: p.id, ticker: p.ticker, yieldPct, annual, monthly: annual / 12, quarterly: annual / 4, val, qty: p.qty };
       })
       .filter(p => p.yieldPct > 0)
       .sort((a, b) => b.annual - a.annual);
@@ -629,7 +629,7 @@ export default function AnalyticsPage() {
                 </thead>
                 <tbody>
                   {divPositions.map(p => (
-                    <tr key={p.ticker} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
                       <td style={{ padding: "6px", fontWeight: 700, color: "var(--accent-light)" }}>{p.ticker}</td>
                       <td style={{ padding: "6px", textAlign: "right", color: "#22c55e", fontWeight: 600 }}>{p.yieldPct.toFixed(2)}%</td>
                       <td style={{ padding: "6px", textAlign: "right" }}>${Math.round(p.annual).toLocaleString("en-US")}</td>

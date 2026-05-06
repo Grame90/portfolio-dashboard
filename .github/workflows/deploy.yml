@@ -7,6 +7,19 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+      FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+      TWELVEDATA_API_KEY_1: ${{ secrets.TWELVEDATA_API_KEY_1 }}
+      TWELVEDATA_API_KEY_2: ${{ secrets.TWELVEDATA_API_KEY_2 }}
+      TWELVEDATA_API_KEY_3: ${{ secrets.TWELVEDATA_API_KEY_3 }}
+      BYBIT_API_KEY: ${{ secrets.BYBIT_API_KEY }}
+      BYBIT_API_SECRET: ${{ secrets.BYBIT_API_SECRET }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -17,23 +30,4 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-          TWELVEDATA_API_KEY_1: ${{ secrets.TWELVEDATA_API_KEY_1 }}
-          TWELVEDATA_API_KEY_2: ${{ secrets.TWELVEDATA_API_KEY_2 }}
-          TWELVEDATA_API_KEY_3: ${{ secrets.TWELVEDATA_API_KEY_3 }}
-          BYBIT_API_KEY: ${{ secrets.BYBIT_API_KEY }}
-          BYBIT_API_SECRET: ${{ secrets.BYBIT_API_SECRET }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-
-      - name: Deploy to Netlify
-        uses: netlify/actions/cli@master
-        with:
-          args: deploy --dir=.next --prod
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      - run: npx netlify-cli deploy --build --prod

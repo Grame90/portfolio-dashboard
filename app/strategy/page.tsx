@@ -6,7 +6,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, BarChart, Bar,
   XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 
 const TICKER_BETA: Record<string, number> = {

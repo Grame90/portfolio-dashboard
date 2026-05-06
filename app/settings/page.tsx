@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
 import { connections } from "@/lib/mockData";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 
 const settingsTabs = ["ПОДКЛЮЧЕНИЯ", "УВЕДОМЛЕНИЯ", "РИСК-ПРОФИЛЬ", "ПОРТФЕЛЬ", "ДАННЫЕ", "АККАУНТ"];

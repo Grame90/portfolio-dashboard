@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { RefreshCw, FileDown, Settings, MoreHorizontal, CheckCircle, Upload, Info } from "lucide-react";
+import { RefreshCw, FileDown, Settings, MoreHorizontal, CheckCircle, Upload, Info, Zap } from "lucide-react";
 import { lastUpdated } from "@/lib/mockData";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
+import AIAnalyzer from "@/components/AIAnalyzer";
 
 interface PageHeaderProps {
   title: string;
@@ -86,6 +87,50 @@ export default function PageHeader({ title, subtitle, showSnapshot = false }: Pa
     setTimeout(() => window.print(), 400);
   }
 
+  
+  async function handleBybitSync() {
+    setMoreOpen(false);
+    showToast("Синхронизация с Bybit...", "#f59e0b");
+    try {
+      const res = await fetch("/api/bybit");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ошибка API");
+      
+      const bybitBalances = data.balances || [];
+      if (!bybitBalances.length) {
+        showToast("Bybit: Активных балансов не найдено", "#f59e0b");
+        return;
+      }
+
+      // Merge into positions-data
+      const raw = localStorage.getItem("positions-data");
+      let current = raw ? JSON.parse(raw) : [];
+      
+      // Remove old Bybit positions to replace with fresh ones
+      current = current.filter((p: any) => p.broker !== "Bybit");
+      
+      // Add new Bybit positions
+      const newPositions = bybitBalances.map((b: any, i: number) => ({
+        id: Date.now() + i,
+        ticker: b.ticker,
+        name: b.ticker,
+        type: b.type,
+        qty: b.qty,
+        avgPrice: 0, // We don't have cost basis from wallet balance API usually
+        color: "#f59e0b",
+        purchaseDate: new Date().toISOString().slice(0, 10),
+        action: "Удерживать",
+        broker: "Bybit"
+      }));
+
+      localStorage.setItem("positions-data", JSON.stringify([...current, ...newPositions]));
+      app.refreshPositions();
+      showToast(`Bybit: Синхронизировано ${newPositions.length} позиций`);
+    } catch (err: any) {
+      showToast(err.message, "#ef4444");
+    }
+  }
+
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -155,6 +200,8 @@ export default function PageHeader({ title, subtitle, showSnapshot = false }: Pa
             </button>
           )}
 
+                    {!isMobile && <AIAnalyzer />}
+
           {/* Refresh */}
           <button
             onClick={handleRefresh}
@@ -199,6 +246,12 @@ export default function PageHeader({ title, subtitle, showSnapshot = false }: Pa
                 boxShadow: "0 8px 32px rgba(0,0,0,0.35)",
                 animation: "fadeIn 0.15s ease",
               }}>
+                <button
+                  onClick={handleBybitSync}
+                  style={{ width: "100%", background: "none", border: "none", padding: "9px 16px", textAlign: "left", cursor: "pointer", fontSize: 13, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 10 }}
+                >
+                  <Zap size={14} style={{ color: "#f59e0b" }} /> Синхронизировать Bybit
+                </button>
                 <button
                   onClick={() => importRef.current?.click()}
                   style={{ width: "100%", background: "none", border: "none", padding: "9px 16px", textAlign: "left", cursor: "pointer", fontSize: 13, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 10 }}

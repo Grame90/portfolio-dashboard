@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMobile } from "@/lib/useMobile";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 
 export default function AuthPage() {
   const { signIn, signUp } = useApp();

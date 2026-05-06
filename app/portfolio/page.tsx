@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useMobile } from "@/lib/useMobile";
 import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 import ApexChart from "@/components/ApexChart";
 import {
   BarChart, Bar,
@@ -16,6 +16,7 @@ type LivePosition = {
   qty: number; avgPrice: number; currentPrice: number; previousClose: number;
   color: string; value: number; pnl: number; pnlPct: number;
   share: number; action: string; targetShare: number; live: boolean;
+  broker?: string;
 };
 
 function recompute(list: LivePosition[]): LivePosition[] {
@@ -26,7 +27,7 @@ function recompute(list: LivePosition[]): LivePosition[] {
     const pnl = p.avgPrice > 0 ? Math.round(value - cost) : 0;
     const pnlPct = p.avgPrice > 0 ? ((p.currentPrice - p.avgPrice) / p.avgPrice) * 100 : 0;
     const share = total > 0 ? (value / total) * 100 : 0;
-    return { ...p, value: Math.round(value), pnl, pnlPct, share };
+    return { ...p, value: Math.round(value), pnl, pnlPct, share, targetShare: p.targetShare ?? 0 };
   });
 }
 
@@ -35,33 +36,6 @@ const POSITION_COLORS = [
   "#7c3aed","#9d6ef5","#3b82f6","#06b6d4","#f59e0b",
   "#94a3b8","#ef4444","#ec4899","#22c55e","#84cc16","#f97316","#a855f7",
 ];
-
-function loadLivePositions(): LivePosition[] {
-  try {
-    const raw = localStorage.getItem("positions-data");
-    if (!raw) return [];
-    const data = JSON.parse(raw) as Array<{
-      id: number; ticker: string; name: string; type: string;
-      qty: number; avgPrice: number; color: string; purchaseDate: string; action: string;
-    }>;
-    if (!data.length) return [];
-    return recompute(data.map((d, i) => ({
-      id: d.id,
-      ticker: d.ticker,
-      name: d.name,
-      type: d.type,
-      qty: d.qty,
-      avgPrice: d.avgPrice,
-      currentPrice: d.avgPrice,
-      previousClose: d.avgPrice,
-      color: d.color || POSITION_COLORS[i % POSITION_COLORS.length],
-      value: 0, pnl: 0, pnlPct: 0, share: 0,
-      action: d.action,
-      targetShare: 0,
-      live: d.type !== "Кэш",
-    })));
-  } catch { return []; }
-}
 
 const COLORS = ["#7c3aed", "#f59e0b", "#3b82f6", "#22c55e"];
 
@@ -76,7 +50,7 @@ const PURCHASE_DATES: Record<string, string> = {
   "BRK.B": "2023-03-28", TSLA: "2023-07-12", IBKR: "2022-12-01",
 };
 
-type ColId = "idx"|"ticker"|"name"|"qty"|"avgPrice"|"currentPrice"|"value"|"pnl"|"pnlPct"|"share"|"targetShare"|"deviation"|"action"|"type"|"dayUsd"|"dayPct"|"beta"|"stopLoss"|"annReturn";
+type ColId = "idx"|"ticker"|"name"|"qty"|"avgPrice"|"currentPrice"|"value"|"pnl"|"pnlPct"|"share"|"targetShare"|"deviation"|"action"|"type"|"dayUsd"|"dayPct"|"beta"|"stopLoss"|"annReturn"|"broker";
 
 const ALL_COLS: { id: ColId; label: string; extra?: boolean }[] = [
   { id: "idx",          label: "#" },
@@ -98,6 +72,7 @@ const ALL_COLS: { id: ColId; label: string; extra?: boolean }[] = [
   { id: "beta",         label: "Бета",         extra: true },
   { id: "stopLoss",     label: "Стоп-лосс",   extra: true },
   { id: "annReturn",    label: "Год. дох.",    extra: true },
+  { id: "broker",       label: "Брокер",       extra: true },
 ];
 
 const DEFAULT_COLS = new Set<ColId>(["idx","ticker","name","qty","avgPrice","currentPrice","value","pnl","pnlPct","share","targetShare","deviation","action"]);
@@ -138,12 +113,27 @@ function periodCutoff(period: string): string {
 function fmtDate(iso: string): string { const [,m,day] = iso.split("-"); return `${day}.${m}`; }
 
 export default function PortfolioPage() {
-  const isMobile = useMobile();
   const app = useApp();
+  const positions = (app.positions as unknown as LivePosition[]).map(p => ({
+    ...p,
+    currentPrice:  (p as any).currentPrice  ?? p.avgPrice,
+    previousClose: (p as any).previousClose ?? p.avgPrice,
+    value:         (p as any).value         ?? p.qty * p.avgPrice,
+    pnl:           (p as any).pnl           ?? 0,
+    pnlPct:        (p as any).pnlPct        ?? 0,
+    share:         (p as any).share         ?? 0,
+    targetShare:   (p as any).targetShare   ?? 0,
+    live:          (p as any).live          ?? p.type !== "Кэш",
+  }));
+  const setPositions = (updater: ((prev: LivePosition[]) => LivePosition[]) | LivePosition[]) => {
+    const next = typeof updater === "function" ? updater(positions) : updater;
+    app.setPositions(next as any);
+  };
+  
+  const isMobile = useMobile();
   const [period, setPeriod] = useState("1М");
   const [history, setHistory] = useState<ChartPoint[]>([]);
-  const [positions, setPositions] = useState<LivePosition[]>([]);
-  const [lastTick, setLastTick] = useState<Record<number, "up" | "down" | null>>({});
+    const [lastTick, setLastTick] = useState<Record<number, "up" | "down" | null>>({});
   const [quoteStatus, setQuoteStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [lastPriceT, setLastPriceT] = useState<number>(0);
   const market = useMarketStatus();
@@ -159,6 +149,36 @@ export default function PortfolioPage() {
   const [ladderTickers, setLadderTickers] = useState<string[]>([]);
   const [ladderExpanded, setLadderExpanded] = useState(false);
   const [snapshotExpanded, setSnapshotExpanded] = useState(false);
+  const [editingSnap, setEditingSnap] = useState<number | null>(null);
+  const [editSnapVal, setEditSnapVal] = useState<{ comment: string; capital: string }>({ comment: "", capital: "" });
+  const [mergeByTicker, setMergeByTicker] = useState(true);
+
+  const displayPositions = useMemo(() => {
+    if (!mergeByTicker) return positions;
+    const map = new Map<string, LivePosition>();
+    for (const p of positions) {
+      const existing = map.get(p.ticker);
+      if (!existing) {
+        map.set(p.ticker, { ...p });
+      } else {
+        const totalQty = existing.qty + p.qty;
+        const weightedAvg = totalQty > 0 ? (existing.qty * existing.avgPrice + p.qty * p.avgPrice) / totalQty : 0;
+        const brokers = [...new Set([existing.broker, (p as any).broker].filter(Boolean))].join(", ");
+        map.set(p.ticker, {
+          ...existing,
+          qty: totalQty,
+          avgPrice: weightedAvg,
+          currentPrice: p.currentPrice,
+          previousClose: p.previousClose,
+          value: existing.value + p.value,
+          pnl: existing.pnl + p.pnl,
+          targetShare: existing.targetShare + p.targetShare,
+          broker: brokers || undefined,
+        });
+      }
+    }
+    return recompute([...map.values()]);
+  }, [positions, mergeByTicker]);
 
   const fetchQuotes = useCallback(async (current: LivePosition[]) => {
     const stockPositions = current.filter((p) => p.live && p.type !== "Крипто");
@@ -183,9 +203,9 @@ export default function PortfolioPage() {
       const maxT = Object.values(allData).reduce((m, q) => Math.max(m, (q as any).t ?? 0), 0);
       if (maxT > 0) setLastPriceT(maxT);
 
-      setPositions((prev) =>
+      setPositions((prev: any) =>
         recompute(
-          prev.map((p) => {
+          prev.map((p: any) => {
             const q = allData[p.ticker];
             if (!q || q.current <= 0) return p;
             const direction = q.current > p.currentPrice ? "up" : q.current < p.currentPrice ? "down" : null;
@@ -203,7 +223,7 @@ export default function PortfolioPage() {
   // Sync live quotes from AppContext so all pages show the same prices
   useEffect(() => {
     if (!Object.keys(app.liveQuotes).length) return;
-    setPositions(prev => recompute(prev.map(p => {
+    setPositions((prev: any) => recompute(prev.map((p: any) => {
       const q = app.liveQuotes[p.ticker];
       if (!q || q.current <= 0) return p;
       return { ...p, currentPrice: q.current, previousClose: q.previousClose };
@@ -214,12 +234,12 @@ export default function PortfolioPage() {
   const [histLoaded, setHistLoaded] = useState(false);
 
   useEffect(() => {
-    const initial = loadLivePositions();
+    const initial = positions;
     setPositions(initial);
     setLadderTickers(initial.filter(p => p.type !== "Кэш").map(p => p.ticker).slice(0, 5));
     fetchQuotes(initial);
     const id = setInterval(() => {
-      setPositions((prev) => { fetchQuotes(prev); return prev; });
+      
     }, 25000);
 
     // Fetch 500 days of historical prices for period P&L calculation
@@ -239,23 +259,7 @@ export default function PortfolioPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchQuotes]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      setPositions((prev) => {
-        const changes: Record<number, "up" | "down" | null> = {};
-        const updated = prev.map((p) => {
-          if (!p.live || p.currentPrice === 0) { changes[p.id] = null; return p; }
-          const delta = p.currentPrice * (Math.random() * 0.003 - 0.0015);
-          const newPrice = Math.max(0.01, p.currentPrice + delta);
-          changes[p.id] = delta > 0 ? "up" : "down";
-          return { ...p, currentPrice: Math.round(newPrice * 100) / 100 };
-        });
-        setLastTick(changes);
-        return recompute(updated);
-      });
-    }, 3000);
-    return () => clearInterval(id);
-  }, []);
+  
 
   // Load / save column visibility
   useEffect(() => {
@@ -301,9 +305,9 @@ export default function PortfolioPage() {
   useEffect(() => {
     function onSnapshot(e: Event) {
       const now = (e as CustomEvent<{ time: Date }>).detail.time;
-      setPositions((current) => {
-        const total = current.reduce((s, p) => s + p.value, 0);
-        const cost  = current.reduce((s, p) => s + p.qty * p.avgPrice, 0);
+      setPositions((current: any) => {
+        const total = current.reduce((s: number, p: any) => s + p.value, 0);
+        const cost  = current.reduce((s: number, p: any) => s + p.qty * p.avgPrice, 0);
         const pnl   = total - cost;
         const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
         const dd = String(now.getDate()).padStart(2, "0");
@@ -332,6 +336,7 @@ export default function PortfolioPage() {
   // Load chart history once
   useEffect(() => {
     try { const r = localStorage.getItem(LS_CHART); if (r) setHistory(JSON.parse(r)); } catch {}
+    try { const r = localStorage.getItem("snapshots-data"); if (r) setLiveSnapshots(JSON.parse(r)); } catch {}
   }, []);
 
   // Auto-save today's snapshot
@@ -797,6 +802,21 @@ export default function PortfolioPage() {
                   </button>
                 )}
 
+                {/* Merge toggle */}
+                <button
+                  onClick={() => setMergeByTicker((v) => !v)}
+                  style={{
+                    fontSize: 11, fontWeight: 600, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                    background: mergeByTicker ? "rgba(124,58,237,0.15)" : "var(--bg-secondary)",
+                    border: `1px solid ${mergeByTicker ? "var(--accent)" : "var(--border)"}`,
+                    color: mergeByTicker ? "var(--accent-light)" : "var(--text-secondary)",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={mergeByTicker ? "Показать по брокерам" : "Объединить одинаковые тикеры"}
+                >
+                  {isMobile ? "⊕" : mergeByTicker ? "⊕ Объединено" : "⊕ По брокерам"}
+                </button>
+
                 {/* Column picker */}
                 <div style={{ position: "relative" }}>
                   <button
@@ -904,7 +924,7 @@ export default function PortfolioPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.map((p, i) => {
+                  {displayPositions.map((p, i) => {
                     const tick = lastTick[p.id];
                     const tickBg = tick === "up" ? "rgba(34,197,94,0.15)" : tick === "down" ? "rgba(239,68,68,0.15)" : "transparent";
                     const dayUsd = p.previousClose > 0 ? Math.round(p.qty * (p.currentPrice - p.previousClose)) : 0;
@@ -964,6 +984,7 @@ export default function PortfolioPage() {
                         case "beta":         return beta !== null ? <span style={{ color: beta > 1.2 ? "#ef4444" : beta < 0 ? "#3b82f6" : "var(--text-primary)" }}>{beta.toFixed(2)}</span> : "–";
                         case "stopLoss":     return stopLoss !== null ? <span style={{ color: "#ef4444" }}>{stopLoss.toFixed(2)}</span> : "–";
                         case "annReturn":    return annReturn !== null ? <span style={{ color: annReturn >= 0 ? "#22c55e" : "#ef4444" }}>{annReturn >= 0 ? "+" : ""}{annReturn.toFixed(2)}%</span> : "–";
+                        case "broker":       return <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{p.broker ?? "–"}</span>;
                         default:             return null;
                       }
                     };
@@ -1414,26 +1435,84 @@ export default function PortfolioPage() {
               {liveSnapshots.map((s, i) => {
                 const prevCap = liveSnapshots[i + 1]?.capital ?? s.capital;
                 const delta = s.capital - prevCap;
+                const isEditing = editingSnap === i;
                 return (
-                  <div key={s.date + s.time} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px", borderRadius: 6, background: i === 0 ? "rgba(124,58,237,0.08)" : "transparent", border: i === 0 ? "1px solid rgba(124,58,237,0.2)" : "1px solid transparent" }}>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: i === 0 ? "var(--accent)" : "var(--border)", flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 600 }}>{s.date} <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>{s.time}</span></div>
-                        <div style={{ fontSize: 9, color: "var(--text-secondary)" }}>{s.comment}</div>
+                  <div key={s.date + s.time + i} style={{ borderRadius: 6, background: i === 0 ? "rgba(124,58,237,0.08)" : "transparent", border: i === 0 ? "1px solid rgba(124,58,237,0.2)" : "1px solid var(--border)", overflow: "hidden" }}>
+                    {isEditing ? (
+                      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input
+                            value={editSnapVal.comment}
+                            onChange={e => setEditSnapVal(v => ({ ...v, comment: e.target.value }))}
+                            placeholder="Комментарий"
+                            style={{ flex: 1, fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid var(--accent)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                          />
+                          <input
+                            value={editSnapVal.capital}
+                            onChange={e => setEditSnapVal(v => ({ ...v, capital: e.target.value }))}
+                            placeholder="Капитал $"
+                            type="number"
+                            style={{ width: 90, fontSize: 11, padding: "4px 8px", borderRadius: 5, border: "1px solid var(--accent)", background: "var(--bg-secondary)", color: "var(--text-primary)" }}
+                          />
+                        </div>
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <button
+                            onClick={() => setEditingSnap(null)}
+                            style={{ fontSize: 10, padding: "3px 10px", borderRadius: 5, border: "1px solid var(--border)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}
+                          >Отмена</button>
+                          <button
+                            onClick={() => {
+                              const updated = liveSnapshots.map((snap, idx) => idx === i ? {
+                                ...snap,
+                                comment: editSnapVal.comment || snap.comment,
+                                capital: Number(editSnapVal.capital) || snap.capital,
+                              } : snap);
+                              setLiveSnapshots(updated);
+                              try { localStorage.setItem("snapshots-data", JSON.stringify(updated)); } catch {}
+                              setEditingSnap(null);
+                            }}
+                            style={{ fontSize: 10, padding: "3px 10px", borderRadius: 5, border: "none", background: "var(--accent)", color: "white", cursor: "pointer" }}
+                          >Сохранить</button>
+                        </div>
                       </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700 }}>${s.capital.toLocaleString("en-US")}</div>
-                      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                        <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 600 }}>{s.profitPct}</span>
-                        {i < liveSnapshots.length - 1 && (
-                          <span style={{ fontSize: 9, color: delta >= 0 ? "#22c55e" : "#ef4444" }}>
-                            {delta >= 0 ? "▲" : "▼"}{Math.abs(delta).toLocaleString("en-US")}
-                          </span>
-                        )}
+                    ) : (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 8px" }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+                          <div style={{ width: 6, height: 6, borderRadius: "50%", background: i === 0 ? "var(--accent)" : "var(--border)", flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600 }}>{s.date} <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>{s.time}</span></div>
+                            <div style={{ fontSize: 9, color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 130 }}>{s.comment}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>${s.capital.toLocaleString("en-US")}</div>
+                            <div style={{ display: "flex", gap: 4, justifyContent: "flex-end", alignItems: "center" }}>
+                              <span style={{ fontSize: 9, color: "#22c55e", fontWeight: 600 }}>{s.profitPct}</span>
+                              {i < liveSnapshots.length - 1 && (
+                                <span style={{ fontSize: 9, color: delta >= 0 ? "#22c55e" : "#ef4444" }}>
+                                  {delta >= 0 ? "▲" : "▼"}{Math.abs(delta).toLocaleString("en-US")}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => { setEditingSnap(i); setEditSnapVal({ comment: s.comment, capital: String(s.capital) }); }}
+                            title="Редактировать"
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "var(--text-muted)", fontSize: 12, lineHeight: 1 }}
+                          >✏️</button>
+                          <button
+                            onClick={() => {
+                              const updated = liveSnapshots.filter((_, idx) => idx !== i);
+                              setLiveSnapshots(updated);
+                              try { localStorage.setItem("snapshots-data", JSON.stringify(updated)); } catch {}
+                            }}
+                            title="Удалить"
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: "#ef4444", fontSize: 12, lineHeight: 1 }}
+                          >✕</button>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 );
               })}

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
-import { useApp } from "@/lib/AppContext";
-import type { StoredPosition } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
+import type { StoredPosition } from "@/lib/types";
 
 const LS_TRIGGERS = "triggers-data";
 const LS_ALERTS   = "trigger-alerts-data";
@@ -57,21 +57,30 @@ export default function TriggersPage() {
   const [alertList, setAlertList] = useState<any[]>([]);
   const [formData, setFormData] = useState({ ticker: "", type: "Цена ниже", targetValue: "", priority: "Средний" });
   const [mounted, setMounted] = useState(false);
+  const initRef = useRef(false);
+  const posCount = app.positions.length;
 
-  // Load or generate triggers once positions are available
+  // Load or generate triggers once — only on first mount with positions
   useEffect(() => {
-    if (app.positions.length === 0 && !mounted) return; // wait for positions to load
+    if (initRef.current) return;
     const saved = loadTriggers();
     if (saved && saved.length > 0) {
       setTriggerList(saved);
-    } else {
-      const generated = generateTriggersFromPositions(app.positions);
-      setTriggerList(generated);
+      setAlertList(loadAlerts());
+      initRef.current = true;
+      setMounted(true);
+      return;
     }
+    if (posCount === 0) return; // wait for positions to load
+    const positions = app.positions;
+    const generated = generateTriggersFromPositions(positions);
+    setTriggerList(generated);
     setAlertList(loadAlerts());
+    initRef.current = true;
     setMounted(true);
+  // posCount is a stable primitive — safe dependency
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [app.positions]);
+  }, [posCount]);
 
   useEffect(() => {
     if (!mounted) return;

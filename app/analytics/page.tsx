@@ -6,7 +6,7 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area,
   XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, CartesianGrid,
 } from "recharts";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
 import { DIVIDEND_YIELDS, loadDividends, ReceivedDividend } from "@/app/overview/page";

@@ -6,18 +6,22 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Eye, List, BarChart2, History,
   AlertTriangle, Zap, Target, Settings, TrendingUp,
-  Palette, FileText, MoreHorizontal, X,
+  Palette, FileText, MoreHorizontal, X, ScanLine,
 } from "lucide-react";
 import { useMobile } from "@/lib/useMobile";
-import { useApp } from "@/lib/AppContext";
+import { useTheme } from "next-themes";
+import { useApp } from "@/lib/useApp";
 import { LogOut } from "lucide-react";
 
 const navItems = [
   { href: "/portfolio",  icon: LayoutDashboard, label: "Портфель" },
   { href: "/overview",   icon: Eye,             label: "Обзор" },
   { href: "/positions",  icon: List,            label: "Позиции" },
+  { href: "/scan",       icon: ScanLine,        label: "Скан" },
+  { href: "/chart",      icon: TrendingUp,      label: "Графики" },
   { href: "/analytics",  icon: BarChart2,       label: "Аналитика" },
   { href: "/history",    icon: History,         label: "История" },
+  { href: "/import",     icon: FileText,        label: "Импорт" },
   { href: "/risks",      icon: AlertTriangle,   label: "Риски" },
   { href: "/triggers",   icon: Zap,             label: "Триггеры" },
   { href: "/actions",    icon: Target,          label: "Действия" },
@@ -39,71 +43,19 @@ const THEMES = [
 type ColorId = (typeof THEMES)[number]["id"];
 type ThemeId = ColorId | `light-${ColorId}`;
 
-const LIGHT_BASE: Record<string, string> = {
-  "--bg-primary": "#f0f2f8", "--bg-secondary": "#e5e8f4", "--bg-card": "#ffffff",
-  "--bg-card-hover": "#f7f8fc", "--border": "#d0d4e8",
-  "--text-primary": "#0d0d22", "--text-secondary": "#4a5070", "--text-muted": "#8890b0",
-  "--green": "#16a34a", "--red": "#dc2626", "--yellow": "#b45309", "--blue": "#1d4ed8",
-};
-
-const THEME_VARS: Record<ThemeId, Record<string, string>> = {
-  purple: {
-    "--bg-primary": "#0a0a1a", "--bg-secondary": "#111128", "--bg-card": "#141430",
-    "--bg-card-hover": "#1a1a38", "--border": "#1e1e45", "--accent": "#7c3aed",
-    "--accent-light": "#9d6ef5", "--text-primary": "#ffffff", "--text-secondary": "#8888aa",
-    "--text-muted": "#555577",
-    "--green": "#22c55e", "--red": "#ef4444", "--yellow": "#f59e0b", "--blue": "#3b82f6",
-  },
-  blue: {
-    "--bg-primary": "#04080f", "--bg-secondary": "#080f1c", "--bg-card": "#0c1628",
-    "--bg-card-hover": "#101e35", "--border": "#162040", "--accent": "#1d6ef5",
-    "--accent-light": "#5a96f8", "--text-primary": "#e8f0ff", "--text-secondary": "#7a90b8",
-    "--text-muted": "#455570",
-    "--green": "#22c55e", "--red": "#ef4444", "--yellow": "#f59e0b", "--blue": "#3b82f6",
-  },
-  green: {
-    "--bg-primary": "#020d06", "--bg-secondary": "#04140a", "--bg-card": "#071a0e",
-    "--bg-card-hover": "#0c2216", "--border": "#0f2d1b", "--accent": "#16a34a",
-    "--accent-light": "#22c55e", "--text-primary": "#e8ffe8", "--text-secondary": "#6a9a78",
-    "--text-muted": "#3a5a45",
-    "--green": "#22c55e", "--red": "#ef4444", "--yellow": "#f59e0b", "--blue": "#3b82f6",
-  },
-  amber: {
-    "--bg-primary": "#0a0800", "--bg-secondary": "#130f02", "--bg-card": "#1a1403",
-    "--bg-card-hover": "#221b05", "--border": "#2d2408", "--accent": "#d97706",
-    "--accent-light": "#f59e0b", "--text-primary": "#fff8e8", "--text-secondary": "#a08858",
-    "--text-muted": "#605030",
-    "--green": "#22c55e", "--red": "#ef4444", "--yellow": "#f59e0b", "--blue": "#3b82f6",
-  },
-  "light-purple": { ...LIGHT_BASE, "--accent": "#6d28d9", "--accent-light": "#7c3aed" },
-  "light-blue":   { ...LIGHT_BASE, "--accent": "#1d4ed8", "--accent-light": "#2563eb" },
-  "light-green":  { ...LIGHT_BASE, "--accent": "#15803d", "--accent-light": "#16a34a" },
-  "light-amber":  { ...LIGHT_BASE, "--accent": "#b45309", "--accent-light": "#d97706" },
-};
-
-function applyThemeVars(id: ThemeId) {
-  const vars = THEME_VARS[id];
-  if (!vars) return;
-  const el = document.documentElement;
-  Object.entries(vars).forEach(([k, v]) => el.style.setProperty(k, v));
-}
 
 export default function Sidebar() {
   const pathname = usePathname();
   const isMobile = useMobile();
   const { user, signOut } = useApp();
-  const [theme, setTheme] = useState<ThemeId>("purple");
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState("");
 
   useEffect(() => {
-    const raw = localStorage.getItem("dashboard-theme") ?? "purple";
-    const saved = (raw === "light" ? "light-purple" : raw) as ThemeId;
-    setTheme(saved);
-    document.documentElement.setAttribute("data-theme", saved);
-    applyThemeVars(saved);
-
+    setMounted(true);
     function tick() {
       const now = new Date();
       const d = `${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`;
@@ -115,22 +67,22 @@ export default function Sidebar() {
     return () => clearInterval(id);
   }, []);
 
+  const currentTheme = theme || "purple";
+  const isDark = !currentTheme.startsWith("light-");
+  const colorId: ColorId = isDark ? (currentTheme as ColorId) : (currentTheme.replace("light-", "") as ColorId);
+
+  function toggleDarkLight() {
+    setTheme(isDark ? `light-${colorId}` : colorId);
+  }
+
   function applyTheme(id: ThemeId) {
     setTheme(id);
     setPickerOpen(false);
-    document.documentElement.setAttribute("data-theme", id);
-    applyThemeVars(id);
-    localStorage.setItem("dashboard-theme", id);
-  }
-
-  const isDark = !theme.startsWith("light-");
-  const colorId: ColorId = isDark ? (theme as ColorId) : (theme.replace("light-", "") as ColorId);
-
-  function toggleDarkLight() {
-    applyTheme(isDark ? `light-${colorId}` : colorId);
   }
 
   const activeTheme = THEMES.find((t) => t.id === colorId) ?? THEMES[0];
+
+  if (!mounted) return null; // prevent hydration mismatch
 
   // ─── Mobile bottom nav ───────────────────────────────────────────────────
   if (isMobile) {

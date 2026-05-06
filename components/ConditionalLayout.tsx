@@ -3,7 +3,8 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
-import { AppProvider, useApp } from "@/lib/AppContext";
+import { DashboardProvider } from "@/lib/DashboardProvider";
+import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import { TooltipProvider } from "@/components/ui/Tooltip";
 
@@ -57,21 +58,21 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
 
   if (isAuth) {
     return (
-      <AppProvider>
+      <DashboardProvider>
         <TooltipProvider>
           {children}
         </TooltipProvider>
-      </AppProvider>
+      </DashboardProvider>
     );
   }
 
   return (
-    <AppProvider>
+    <DashboardProvider>
       <TooltipProvider>
         <AuthGuard>
           {children}
         </AuthGuard>
       </TooltipProvider>
-    </AppProvider>
+    </DashboardProvider>
   );
 }

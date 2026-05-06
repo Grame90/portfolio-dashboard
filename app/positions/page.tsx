@@ -5,7 +5,8 @@ import PageHeader from "@/components/PageHeader";
 import { useMobile } from "@/lib/useMobile";
 import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
 import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
-import type { StoredPosition } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
+import type { StoredPosition } from "@/lib/types";
 import { Dialog } from "@/components/ui/Dialog";
 import { Select, SelectItem } from "@/components/ui/Select";
 import { Tooltip as UITooltip } from "@/components/ui/Tooltip";
@@ -75,7 +76,7 @@ function loadPositions(): Position[] {
     if (!raw) return seed;
     const data: SavedPosition[] = JSON.parse(raw);
     if (!data.length) return [];
-    return recompute(data.map((d) => ({
+    return data.map((d) => ({
       ...d,
       broker: d.broker ?? "",
       color: d.type === "Кэш" ? d.color : autoColor(d.ticker),
@@ -83,7 +84,7 @@ function loadPositions(): Position[] {
       previousClose: d.avgPrice,
       value: 0, pnl: 0, pnlPct: 0, share: 0,
       live: d.type !== "Кэш",
-    })));
+    }));
   } catch { return seed; }
 }
 
@@ -159,7 +160,15 @@ function brokerColor(name: string): string {
 
 export default function PositionsPage() {
   const isMobile = useMobile();
-  const [positions, setPositions] = useState<Position[]>([]);
+  const app = useApp();
+  const positions = app.positions;
+  const setPositions = (updater: ((prev: Position[]) => Position[]) | Position[]) => {
+    const next = typeof updater === "function" ? updater(app.positions) : updater;
+    app.setPositions(next.map((p: any) => ({
+      id: p.id, ticker: p.ticker, name: p.name, type: p.type, qty: p.qty,
+      avgPrice: p.avgPrice, color: p.color, purchaseDate: p.purchaseDate, action: p.action, broker: p.broker
+    })));
+  };
   const [editingNameId, setEditingNameId] = useState<number | null>(null);
   const [editingNameValue, setEditingNameValue] = useState("");
   const [activeTab, setActiveTab] = useState("ВСЕ ПОЗИЦИИ");
@@ -254,35 +263,10 @@ export default function PositionsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deleteConfirm]);
 
-  useEffect(() => {
-    const initial = loadPositions();
-    setPositions(initial);
-    fetchQuotes(initial);
-    const id = setInterval(() => {
-      setPositions((prev) => { fetchQuotes(prev); return prev; });
-    }, 25000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchQuotes]);
+  
 
   // Local simulation between real fetches — tick every 3 seconds
-  useEffect(() => {
-    const id = setInterval(() => {
-      setPositions((prev) => {
-        const changes: Record<number, "up" | "down" | null> = {};
-        const updated = prev.map((p) => {
-          if (!p.live || p.currentPrice === 0) { changes[p.id] = null; return p; }
-          const delta = p.currentPrice * (Math.random() * 0.003 - 0.0015);
-          const newPrice = Math.max(0.01, p.currentPrice + delta);
-          changes[p.id] = delta > 0 ? "up" : "down";
-          return { ...p, currentPrice: Math.round(newPrice * 100) / 100 };
-        });
-        setLastTick(changes);
-        return recompute(updated);
-      });
-    }, 3000);
-    return () => clearInterval(id);
-  }, []);
+  
 
   const total = positions.reduce((s, p) => s + p.value, 0);
   const totalCost = positions.reduce((s, p) => s + p.qty * p.avgPrice, 0);
@@ -453,7 +437,7 @@ export default function PositionsPage() {
 
   function deletePosition(id: number) {
     setPositions((prev) => {
-      const next = recompute(prev.filter((p) => p.id !== id));
+      const next = prev.filter((p) => p.id !== id);
       persistPositions(next);
       return next;
     });
@@ -502,7 +486,7 @@ export default function PositionsPage() {
         });
       }
 
-      const result = recompute(next);
+      const result = next;
       persistPositions(result);
       return result;
     });
@@ -547,7 +531,7 @@ export default function PositionsPage() {
             broker: form.broker.trim(),
           }];
         }
-        const result = recompute(next);
+        const result = next;
         persistPositions(result);
         return result;
       });
@@ -579,7 +563,7 @@ export default function PositionsPage() {
       broker: form.broker.trim(),
     };
     setPositions((prev) => {
-      const next = recompute([...prev, newPos]);
+      const next = [...prev, newPos];
       persistPositions(next);
       return next;
     });
@@ -634,7 +618,7 @@ export default function PositionsPage() {
     const name = editingNameValue.trim();
     if (!name) { setEditingNameId(null); return; }
     setPositions((prev) => {
-      const next = recompute(prev.map((p) => p.id === id ? { ...p, name } : p));
+      const next = prev.map((p) => p.id === id ? { ...p, name } : p);
       persistPositions(next);
       return next;
     });
@@ -871,62 +855,66 @@ export default function PositionsPage() {
         {showForm && (
           <div className="card" style={{ padding: 18 }}>
             <div className="card-title">Новый инструмент</div>
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr 1fr 1fr 1fr 1fr 1fr auto", gap: 10, alignItems: "end" }}>
-              <div style={{ position: "relative" }}>
-                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>
-                  Тикер *{searchLoading && <span style={{ marginLeft: 5, color: "var(--accent-light)" }}>…</span>}
-                </div>
-                <input
-                  type="text" value={form.ticker} onChange={(e) => handleTickerInput(e.target.value)}
-                  onFocus={() => searchResults.length > 0 && setDropdownOpen(true)}
-                  onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
-                  onKeyDown={(e) => {
-                    if (!dropdownOpen) return;
-                    if (e.key === "ArrowDown") { e.preventDefault(); setDropdownIdx((i) => Math.min(i + 1, searchResults.length - 1)); }
-                    if (e.key === "ArrowUp")   { e.preventDefault(); setDropdownIdx((i) => Math.max(i - 1, 0)); }
-                    if (e.key === "Enter" && dropdownIdx >= 0) { e.preventDefault(); selectSearchResult(searchResults[dropdownIdx]); }
-                    if (e.key === "Escape")    { setDropdownOpen(false); }
-                  }}
-                  placeholder="AAPL" autoComplete="off"
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${dropdownOpen ? "var(--accent)" : "var(--border)"}`, background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }}
-                />
-                {dropdownOpen && searchResults.length > 0 && (
-                  <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 500, background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
-                    {searchResults.map((item, idx) => (
-                      <div key={item.symbol} onMouseDown={() => selectSearchResult(item)}
-                        style={{ padding: "7px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, background: idx === dropdownIdx ? "rgba(124,58,237,0.12)" : "transparent", borderBottom: idx < searchResults.length - 1 ? "1px solid var(--border)" : "none" }}
-                        onMouseEnter={() => setDropdownIdx(idx)}>
-                        <span style={{ fontWeight: 700, fontSize: 12, color: "var(--accent-light)", minWidth: 52 }}>{item.symbol}</span>
-                        <span style={{ fontSize: 11, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</span>
-                        <span style={{ marginLeft: "auto", fontSize: 9, flexShrink: 0, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "rgba(124,58,237,0.15)", color: "var(--accent-light)" }}>{detectInstrumentType(item.type, item.symbol)}</span>
-                      </div>
-                    ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr 1fr 1fr 1fr", gap: 10, alignItems: "end" }}>
+                <div style={{ position: "relative" }}>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>
+                    Тикер *{searchLoading && <span style={{ marginLeft: 5, color: "var(--accent-light)" }}>…</span>}
                   </div>
-                )}
-              </div>
-              {[
-                { label: "Название", key: "name", placeholder: "Apple Inc.", type: "text" },
-                { label: "Кол-во *", key: "qty", placeholder: "10", type: "number" },
-                { label: "Ср.цена * ($)", key: "avgPrice", placeholder: "150.00", type: "number" },
-                { label: "Дата покупки", key: "purchaseDate", placeholder: "", type: "date" },
-              ].map((f) => (
-                <div key={f.key}>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>{f.label}</div>
-                  <input type={f.type} value={(form as any)[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
-                    placeholder={f.placeholder}
-                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }} />
+                  <input
+                    type="text" value={form.ticker} onChange={(e) => handleTickerInput(e.target.value)}
+                    onFocus={() => searchResults.length > 0 && setDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                    onKeyDown={(e) => {
+                      if (!dropdownOpen) return;
+                      if (e.key === "ArrowDown") { e.preventDefault(); setDropdownIdx((i) => Math.min(i + 1, searchResults.length - 1)); }
+                      if (e.key === "ArrowUp")   { e.preventDefault(); setDropdownIdx((i) => Math.max(i - 1, 0)); }
+                      if (e.key === "Enter" && dropdownIdx >= 0) { e.preventDefault(); selectSearchResult(searchResults[dropdownIdx]); }
+                      if (e.key === "Escape")    { setDropdownOpen(false); }
+                    }}
+                    placeholder="AAPL" autoComplete="off"
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1px solid ${dropdownOpen ? "var(--accent)" : "var(--border)"}`, background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }}
+                  />
+                  {dropdownOpen && searchResults.length > 0 && (
+                    <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 500, background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>
+                      {searchResults.map((item, idx) => (
+                        <div key={item.symbol} onMouseDown={() => selectSearchResult(item)}
+                          style={{ padding: "7px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, background: idx === dropdownIdx ? "rgba(124,58,237,0.12)" : "transparent", borderBottom: idx < searchResults.length - 1 ? "1px solid var(--border)" : "none" }}
+                          onMouseEnter={() => setDropdownIdx(idx)}>
+                          <span style={{ fontWeight: 700, fontSize: 12, color: "var(--accent-light)", minWidth: 52 }}>{item.symbol}</span>
+                          <span style={{ fontSize: 11, color: "var(--text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</span>
+                          <span style={{ marginLeft: "auto", fontSize: 9, flexShrink: 0, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: "rgba(124,58,237,0.15)", color: "var(--accent-light)" }}>{detectInstrumentType(item.type, item.symbol)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
-              <div>
-                <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>Брокер</div>
-                <input list="brokers-list" value={form.broker} onChange={(e) => setForm({ ...form, broker: e.target.value })}
-                  placeholder="Interactive Brokers"
-                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }} />
-                <datalist id="brokers-list">{BROKERS.map(b => <option key={b} value={b} />)}</datalist>
+                {[
+                  { label: "Название", key: "name", placeholder: "Apple Inc.", type: "text" },
+                  { label: "Кол-во *", key: "qty", placeholder: "10", type: "number" },
+                  { label: "Ср.цена * ($)", key: "avgPrice", placeholder: "150.00", type: "number" },
+                  { label: "Дата покупки", key: "purchaseDate", placeholder: "", type: "date" },
+                ].map((f) => (
+                  <div key={f.key}>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>{f.label}</div>
+                    <input type={f.type} value={(form as any)[f.key]} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                      placeholder={f.placeholder}
+                      style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }} />
+                  </div>
+                ))}
               </div>
-              <button onClick={addPosition} style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "var(--accent)", color: "white", whiteSpace: "nowrap", alignSelf: "flex-end" }}>
-                Добавить
-              </button>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 10, alignItems: "end" }}>
+                <div>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>Брокер</div>
+                  <input list="brokers-list" value={form.broker} onChange={(e) => setForm({ ...form, broker: e.target.value })}
+                    placeholder="Interactive Brokers, Binance, Bybit..."
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12, boxSizing: "border-box" }} />
+                  <datalist id="brokers-list">{BROKERS.map(b => <option key={b} value={b} />)}</datalist>
+                </div>
+                <button onClick={addPosition} style={{ padding: "8px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: "var(--accent)", color: "white", whiteSpace: "nowrap", alignSelf: "flex-end" }}>
+                  Добавить
+                </button>
+              </div>
             </div>
             {formError && <div style={{ marginTop: 8, fontSize: 12, color: "#ef4444" }}>{formError}</div>}
           </div>

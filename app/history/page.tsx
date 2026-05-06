@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import PageHeader from "@/components/PageHeader";
 import ApexChart from "@/components/ApexChart";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 
 const TYPE_COLOR: Record<string, string> = {

@@ -7,7 +7,7 @@ import {
   AreaChart, Area,
 } from "recharts";
 import { actionItems, completedActions } from "@/lib/mockData";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 
 const tabs = ["ВСЕ ДЕЙСТВИЯ", "ПРИОРИТЕТНЫЕ", "ЗАПЛАНИРОВАННЫЕ", "ИСТОРИЯ"];
 

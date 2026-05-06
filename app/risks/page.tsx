@@ -7,7 +7,7 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, ReferenceLine,
 } from "recharts";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
 

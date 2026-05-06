@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import PageHeader from "@/components/PageHeader";
-import { useApp } from "@/lib/AppContext";
+import { useApp } from "@/lib/useApp";
 
 type SnapshotRow = {
   id: string;
@@ -42,7 +42,7 @@ export default function ReportPage() {
   const app = useApp();
   const [rows, setRows] = useState<SnapshotRow[]>([]);
   const [lockedRows, setLockedRows] = useState<Set<string>>(new Set());
-  const [editingCell, setEditingCell] = useState<{ id: string; field: "note" } | null>(null);
+  const [editingCell, setEditingCell] = useState<{ id: string; field: keyof SnapshotRow } | null>(null);
   const [editValue, setEditValue] = useState("");
   const [rates, setRates] = useState<{ TRY: number; EUR: number; RUB: number }>({ TRY: 32.5, EUR: 0.92, RUB: 93 });
   const [snapping, setSnapping] = useState(false);
@@ -120,15 +120,26 @@ export default function ReportPage() {
     });
   }
 
-  function startEdit(id: string, currentNote: string) {
+  function startEdit(id: string, field: keyof SnapshotRow, currentValue: any) {
     if (lockedRows.has(id)) return;
-    setEditingCell({ id, field: "note" });
-    setEditValue(currentNote);
+    setEditingCell({ id, field });
+    setEditValue(String(currentValue));
   }
+
+  
 
   function commitEdit() {
     if (!editingCell) return;
-    const updated = rows.map(r => r.id === editingCell.id ? { ...r, note: editValue } : r);
+    const { id, field } = editingCell;
+    const updated = rows.map(r => {
+      if (r.id !== id) return r;
+      let val: any = editValue;
+      if (field !== "note" && field !== "date") {
+        val = Number(editValue.replace(/[^0-9.-]/g, ""));
+        if (isNaN(val)) val = r[field];
+      }
+      return { ...r, [field]: val };
+    });
     saveSnapshots(updated);
     setRows(updated);
     setEditingCell(null);
@@ -244,16 +255,32 @@ export default function ReportPage() {
                     >
                       <td style={{ padding: "7px 10px", fontWeight: 600, whiteSpace: "nowrap" }}>{row.date}</td>
                       <td style={{ padding: "7px 10px", color: "var(--text-secondary)" }}>{row.tryRate.toFixed(1)}</td>
-                      <td style={{ padding: "7px 10px", color: pnlColor(row.dailyPnl), fontWeight: 600 }}>{row.dailyPnl >= 0 ? "+" : ""}${fmt(row.dailyPnl, 0)}</td>
-                      <td style={{ padding: "7px 10px", color: pnlColor(row.totalPnl), fontWeight: 600 }}>{row.totalPnl >= 0 ? "+" : ""}${fmt(row.totalPnl, 0)}</td>
+                      {editingCell?.id === row.id && editingCell?.field === "dailyPnl" ? (
+     <td style={{ padding: "7px 10px" }}><input autoFocus value={editValue} onChange={e=>setEditValue(e.target.value)} onBlur={commitEdit} onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape")setEditingCell(null);}} style={{ width:"60px", background:"var(--bg-secondary)", border:"1px solid var(--accent)", color:"var(--text-primary)"}} /></td>
+   ) : (
+     <td onClick={() => startEdit(row.id, "dailyPnl", row.dailyPnl)} style={{ cursor: locked ? "default" : "text", padding: "7px 10px", color: pnlColor(row.dailyPnl), fontWeight: 600 }}>{row.dailyPnl >= 0 ? "+" : ""}${fmt(row.dailyPnl, 0)}</td>
+   )}
+                      {editingCell?.id === row.id && editingCell?.field === "totalPnl" ? (
+     <td style={{ padding: "7px 10px" }}><input autoFocus value={editValue} onChange={e=>setEditValue(e.target.value)} onBlur={commitEdit} onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape")setEditingCell(null);}} style={{ width:"60px", background:"var(--bg-secondary)", border:"1px solid var(--accent)", color:"var(--text-primary)"}} /></td>
+   ) : (
+     <td onClick={() => startEdit(row.id, "totalPnl", row.totalPnl)} style={{ cursor: locked ? "default" : "text", padding: "7px 10px", color: pnlColor(row.totalPnl), fontWeight: 600 }}>{row.totalPnl >= 0 ? "+" : ""}${fmt(row.totalPnl, 0)}</td>
+   )}
                       <td style={{ padding: "7px 10px", color: pnlColor(row.returnPct) }}>{row.returnPct >= 0 ? "+" : ""}{row.returnPct.toFixed(2)}%</td>
                       <td style={{ padding: "7px 10px", color: "var(--text-secondary)" }}>{row.benchmark10pct >= 0 ? "+" : ""}${fmt(row.benchmark10pct, 0)}</td>
-                      <td style={{ padding: "7px 10px" }}>${fmt(row.balanceUSD, 0)}</td>
+                      {editingCell?.id === row.id && editingCell?.field === "balanceUSD" ? (
+     <td style={{ padding: "7px 10px" }}><input autoFocus value={editValue} onChange={e=>setEditValue(e.target.value)} onBlur={commitEdit} onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape")setEditingCell(null);}} style={{ width:"60px", background:"var(--bg-secondary)", border:"1px solid var(--accent)", color:"var(--text-primary)"}} /></td>
+   ) : (
+     <td onClick={() => startEdit(row.id, "balanceUSD", row.balanceUSD)} style={{ cursor: locked ? "default" : "text", padding: "7px 10px" }}>${fmt(row.balanceUSD, 0)}</td>
+   )}
                       <td style={{ padding: "7px 10px", color: "var(--text-secondary)" }}>€{fmt(row.balanceEUR, 0)}</td>
                       <td style={{ padding: "7px 10px", color: "var(--text-secondary)" }}>₺{fmt(row.balanceTRY, 0)}</td>
                       <td style={{ padding: "7px 10px", color: "var(--text-secondary)" }}>₽{fmt(row.balanceRUB, 0)}</td>
                       <td style={{ padding: "7px 10px", color: "var(--text-secondary)" }}>₿{row.balanceBTC.toFixed(5)}</td>
-                      <td style={{ padding: "7px 10px", color: "var(--text-secondary)" }}>${fmt(row.invested, 0)}</td>
+                      {editingCell?.id === row.id && editingCell?.field === "invested" ? (
+     <td style={{ padding: "7px 10px" }}><input autoFocus value={editValue} onChange={e=>setEditValue(e.target.value)} onBlur={commitEdit} onKeyDown={e=>{if(e.key==="Enter")commitEdit();if(e.key==="Escape")setEditingCell(null);}} style={{ width:"60px", background:"var(--bg-secondary)", border:"1px solid var(--accent)", color:"var(--text-primary)"}} /></td>
+   ) : (
+     <td onClick={() => startEdit(row.id, "invested", row.invested)} style={{ cursor: locked ? "default" : "text", padding: "7px 10px", color: "var(--text-secondary)" }}>${fmt(row.invested, 0)}</td>
+   )}
                       <td style={{ padding: "7px 10px", minWidth: 120 }}>
                         {isEditing ? (
                           <input
@@ -266,7 +293,7 @@ export default function ReportPage() {
                           />
                         ) : (
                           <span
-                            onClick={() => startEdit(row.id, row.note)}
+                            onClick={() => startEdit(row.id, "note", row.note)}
                             style={{ cursor: locked ? "default" : "text", color: row.note ? "var(--text-primary)" : "var(--text-muted)", fontStyle: row.note ? "normal" : "italic" }}
                           >
                             {row.note || (locked ? "–" : "Добавить заметку…")}

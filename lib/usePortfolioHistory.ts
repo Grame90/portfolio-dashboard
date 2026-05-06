@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import type { StoredPosition } from "./AppContext";
+import type { StoredPosition } from "./types";
 
 export type HistPoint = { date: string; value: number; cost: number };
 export type HistData  = Record<string, { dates: string[]; closes: number[]; returns?: number[] }>;

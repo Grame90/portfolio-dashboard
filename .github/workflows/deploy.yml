@@ -30,4 +30,8 @@ jobs:
 
       - run: npm ci
 
-      - run: npx netlify-cli deploy --build --prod
+      - run: npm run build
+
+      - run: npx netlify-cli build --offline
+
+      - run: npx netlify-cli deploy --dir=.next --prod

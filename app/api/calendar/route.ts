@@ -213,5 +213,7 @@ export async function GET(request: Request) {
     (a, b) => new Date(a.isoDate).getTime() - new Date(b.isoDate).getTime()
   );
 
-  return NextResponse.json({ events: all });
+  return NextResponse.json({ events: all }, {
+    headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" },
+  });
 }

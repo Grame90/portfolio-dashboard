@@ -40,5 +40,7 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json(quotes);
+  return NextResponse.json(quotes, {
+    headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" },
+  });
 }

@@ -1,0 +1,257 @@
+{
+  "positions": [
+    {
+      "id": 1,
+      "ticker": "GLD",
+      "name": "SPDR GOLD SHARES",
+      "type": "ETF",
+      "qty": 7,
+      "avgPrice": 368.72,
+      "color": "#f59e0b",
+      "purchaseDate": "2024-01-01",
+      "broker": "IBKR (Малый)"
+    },
+    {
+      "id": 2,
+      "ticker": "QQQ",
+      "name": "INVESCO QQQ TRUST",
+      "type": "ETF",
+      "qty": 9,
+      "avgPrice": 602.80,
+      "color": "#3b82f6",
+      "purchaseDate": "2024-01-01",
+      "broker": "IBKR (Малый)"
+    },
+    {
+      "id": 3,
+      "ticker": "SLV",
+      "name": "ISHARES SILVER TRUST",
+      "type": "ETF",
+      "qty": 66,
+      "avgPrice": 43.89,
+      "color": "#94a3b8",
+      "purchaseDate": "2024-01-01",
+      "broker": "IBKR (Малый)"
+    },
+    {
+      "id": 4,
+      "ticker": "SMH",
+      "name": "VANECK SEMICONDUCTOR",
+      "type": "ETF",
+      "qty": 6,
+      "avgPrice": 341.29,
+      "color": "#8b5cf6",
+      "purchaseDate": "2024-01-01",
+      "broker": "IBKR (Малый)"
+    },
+    {
+      "id": 5,
+      "ticker": "SOXX",
+      "name": "ISHARES SEMICONDUCTOR",
+      "type": "ETF",
+      "qty": 8,
+      "avgPrice": 287.70,
+      "color": "#6366f1",
+      "purchaseDate": "2024-01-01",
+      "broker": "IBKR (Малый)"
+    },
+    {
+      "id": 6,
+      "ticker": "VOO",
+      "name": "VANGUARD S&P 500 ETF",
+      "type": "ETF",
+      "qty": 11,
+      "avgPrice": 610.97,
+      "color": "#ef4444",
+      "purchaseDate": "2024-01-01",
+      "broker": "IBKR (Малый)"
+    },
+    {
+      "id": 7,
+      "ticker": "КЭШ (USD)",
+      "name": "🇺🇸 Доллар США",
+      "type": "Кэш",
+      "qty": 1480,
+      "avgPrice": 1,
+      "color": "#22c55e",
+      "purchaseDate": "2024-01-01",
+      "broker": "IBKR (Малый)"
+    },
+    {
+      "id": 8,
+      "ticker": "КЭШ (TRY)",
+      "name": "🇹🇷 Турецкая лира",
+      "type": "Кэш",
+      "qty": 1430,
+      "avgPrice": 0.028,
+      "color": "#ef4444",
+      "purchaseDate": "2024-01-01",
+      "broker": "IBKR (Малый)"
+    },
+    {
+      "id": 9,
+      "ticker": "SLV",
+      "name": "ISHARES SILVER TRUST",
+      "type": "ETF",
+      "qty": 745,
+      "avgPrice": 39.69,
+      "color": "#94a3b8",
+      "purchaseDate": "2023-06-01",
+      "broker": "IBKR (Основной)"
+    },
+    {
+      "id": 10,
+      "ticker": "GLD",
+      "name": "SPDR GOLD SHARES",
+      "type": "ETF",
+      "qty": 112,
+      "avgPrice": 317.65,
+      "color": "#f59e0b",
+      "purchaseDate": "2023-06-01",
+      "broker": "IBKR (Основной)"
+    },
+    {
+      "id": 11,
+      "ticker": "BRK.B",
+      "name": "BERKSHIRE HATHAWAY",
+      "type": "Акция",
+      "qty": 53,
+      "avgPrice": 489.73,
+      "color": "#10b981",
+      "purchaseDate": "2023-06-01",
+      "broker": "IBKR (Основной)"
+    },
+    {
+      "id": 12,
+      "ticker": "IBKR",
+      "name": "INTERACTIVE BROKERS",
+      "type": "Акция",
+      "qty": 225,
+      "avgPrice": 54.05,
+      "color": "#ef4444",
+      "purchaseDate": "2023-06-01",
+      "broker": "IBKR (Основной)"
+    },
+    {
+      "id": 13,
+      "ticker": "TSLA",
+      "name": "TESLA INC",
+      "type": "Акция",
+      "qty": 0.875,
+      "avgPrice": 231.10,
+      "color": "#3b82f6",
+      "purchaseDate": "2023-06-01",
+      "broker": "IBKR (Основной)"
+    },
+    {
+      "id": 14,
+      "ticker": "VOO",
+      "name": "VANGUARD S&P 500 ETF",
+      "type": "ETF",
+      "qty": 89,
+      "avgPrice": 603.88,
+      "color": "#ef4444",
+      "purchaseDate": "2023-06-01",
+      "broker": "IBKR (Основной)"
+    },
+    {
+      "id": 15,
+      "ticker": "QQQ",
+      "name": "INVESCO QQQ TRUST",
+      "type": "ETF",
+      "qty": 126,
+      "avgPrice": 577.11,
+      "color": "#3b82f6",
+      "purchaseDate": "2023-06-01",
+      "broker": "IBKR (Основной)"
+    },
+    {
+      "id": 16,
+      "ticker": "КЭШ (USD)",
+      "name": "🇺🇸 Доллар США",
+      "type": "Кэш",
+      "qty": 30700,
+      "avgPrice": 1,
+      "color": "#22c55e",
+      "purchaseDate": "2023-06-01",
+      "broker": "IBKR (Основной)"
+    },
+    {
+      "id": 17,
+      "ticker": "КЭШ (TRY)",
+      "name": "🇹🇷 Турецкая лира",
+      "type": "Кэш",
+      "qty": 2.84,
+      "avgPrice": 0.028,
+      "color": "#ef4444",
+      "purchaseDate": "2024-05-01",
+      "broker": "Midas"
+    },
+    {
+      "id": 18,
+      "ticker": "КЭШ (USD)",
+      "name": "🇺🇸 Доллар США",
+      "type": "Кэш",
+      "qty": 154.90,
+      "avgPrice": 1,
+      "color": "#22c55e",
+      "purchaseDate": "2024-05-01",
+      "broker": "Midas"
+    },
+    {
+      "id": 19,
+      "ticker": "TQQQ",
+      "name": "PROSHARES ULTRAPRO QQQ",
+      "type": "ETF",
+      "qty": 0.012127,
+      "avgPrice": 61.78,
+      "color": "#8b5cf6",
+      "purchaseDate": "2024-05-01",
+      "broker": "Midas"
+    },
+    {
+      "id": 20,
+      "ticker": "BRK.B",
+      "name": "BERKSHIRE HATHAWAY",
+      "type": "Акция",
+      "qty": 61.463708,
+      "avgPrice": 474.56,
+      "color": "#10b981",
+      "purchaseDate": "2024-05-01",
+      "broker": "Midas"
+    },
+    {
+      "id": 21,
+      "ticker": "GLD",
+      "name": "SPDR GOLD SHARES",
+      "type": "ETF",
+      "qty": 30.474898,
+      "avgPrice": 417.00,
+      "color": "#f59e0b",
+      "purchaseDate": "2024-05-01",
+      "broker": "Midas"
+    },
+    {
+      "id": 22,
+      "ticker": "SMH",
+      "name": "VANECK SEMICONDUCTOR",
+      "type": "ETF",
+      "qty": 68.138170,
+      "avgPrice": 498.94,
+      "color": "#8b5cf6",
+      "purchaseDate": "2024-05-01",
+      "broker": "Midas"
+    },
+    {
+      "id": 23,
+      "ticker": "VOO",
+      "name": "VANGUARD S&P 500 ETF",
+      "type": "ETF",
+      "qty": 130.417,
+      "avgPrice": 520.50,
+      "color": "#ef4444",
+      "purchaseDate": "2024-05-01",
+      "broker": "Midas"
+    }
+  ]
+}

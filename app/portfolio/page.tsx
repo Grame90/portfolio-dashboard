@@ -239,7 +239,7 @@ export default function PortfolioPage() {
     setLadderTickers(initial.filter(p => p.type !== "Кэш").map(p => p.ticker).slice(0, 5));
     fetchQuotes(initial);
     const id = setInterval(() => {
-      
+      fetchQuotes(initial);
     }, 25000);
 
     // Fetch 500 days of historical prices for period P&L calculation

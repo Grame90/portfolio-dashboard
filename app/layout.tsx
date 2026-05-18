@@ -2,6 +2,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import type { Metadata } from "next";
 import "./globals.css";
 import ConditionalLayout from "@/components/ConditionalLayout";
+import { Analytics } from "@vercel/analytics/next";
 
 
 export const metadata: Metadata = {
@@ -23,6 +24,7 @@ export default function RootLayout({
           {children}
         </ConditionalLayout>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );

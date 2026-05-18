@@ -5,8 +5,18 @@ import PageHeader from "@/components/PageHeader";
 import { connections } from "@/lib/mockData";
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
+import { BACKUP_KEYS, importBackupPayload } from "@/lib/portfolioBackup";
 
 const settingsTabs = ["ПОДКЛЮЧЕНИЯ", "УВЕДОМЛЕНИЯ", "РИСК-ПРОФИЛЬ", "ПОРТФЕЛЬ", "ДАННЫЕ", "АККАУНТ"];
+
+const STORAGE_INFO = [
+  { key: "positions-data", label: "Позиции" },
+  { key: "dashboard-settings", label: "Настройки" },
+  { key: "portfolio-chart-history", label: "История портфеля" },
+  { key: "dividends-received", label: "Дивиденды" },
+  { key: "snapshots-data", label: "Снимки" },
+  { key: "target-structure", label: "Целевая структура" },
+];
 
 const RISK_PRESETS: Record<string, { maxDrawdown: number; maxPositionSize: number; minCash: number; stopLoss: number; rebalancePeriod: string }> = {
   "Консервативный": { maxDrawdown: 10, maxPositionSize: 15, minCash: 20, stopLoss: 8,  rebalancePeriod: "Ежеквартально" },
@@ -138,19 +148,10 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(null), 2500);
   }
 
-  const LS_KEYS = [
-    { key: "positions-data",         label: "Позиции" },
-    { key: "dashboard-settings",     label: "Настройки" },
-    { key: "portfolio-chart-history",label: "История портфеля" },
-    { key: "dividends-received",     label: "Дивиденды" },
-    { key: "snapshots-data",         label: "Снимки" },
-    { key: "target-structure",       label: "Целевая структура" },
-  ];
-
   function handleExport() {
     try {
       const payload: Record<string, unknown> = { exportedAt: new Date().toISOString() };
-      LS_KEYS.forEach(({ key }) => {
+      BACKUP_KEYS.forEach((key) => {
         try { payload[key] = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
       });
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -172,11 +173,10 @@ export default function SettingsPage() {
     reader.onload = (ev) => {
       try {
         const payload = JSON.parse(ev.target?.result as string);
-        LS_KEYS.forEach(({ key }) => {
-          if (payload[key] != null) localStorage.setItem(key, JSON.stringify(payload[key]));
-        });
+        const positions = importBackupPayload(payload);
+        if (positions.length > 0) app.setPositions(positions);
         app.refreshPositions();
-        setSaved("Данные импортированы ✓");
+        setSaved(`Данные импортированы: ${positions.length} позиций ✓`);
         setTimeout(() => setSaved(null), 3000);
       } catch { setSaved("Ошибка импорта ✗"); }
     };
@@ -186,7 +186,7 @@ export default function SettingsPage() {
 
   function handleClearAll() {
     if (!window.confirm("Удалить все данные портфеля? Это действие необратимо.")) return;
-    LS_KEYS.forEach(({ key }) => localStorage.removeItem(key));
+    BACKUP_KEYS.forEach((key) => localStorage.removeItem(key));
     app.refreshPositions();
     setSaved("Данные удалены");
     setTimeout(() => setSaved(null), 2500);
@@ -238,6 +238,58 @@ export default function SettingsPage() {
       return maxDD;
     } catch { return 0; }
   }, []);
+
+  const portfolioDynamics = useMemo(() => {
+    let history: { date: string; value: number; cost?: number }[] = [];
+    try {
+      history = JSON.parse(localStorage.getItem("portfolio-chart-history") || "[]");
+    } catch {}
+
+    const validHistory = history
+      .filter((p) => Number.isFinite(p.value) && p.value > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const first = validHistory[0];
+    const last = validHistory.at(-1);
+    const baseline = first?.value || liveCost || liveTotal;
+    const current = liveTotal || last?.value || 0;
+    const changeUsd = current - baseline;
+    const changePct = baseline > 0 ? (changeUsd / baseline) * 100 : 0;
+    const high = validHistory.length ? Math.max(...validHistory.map((p) => p.value), current) : current;
+    const low = validHistory.length ? Math.min(...validHistory.map((p) => p.value), current) : current;
+    const target = Number(risk.targetAmount) || 0;
+    const targetProgress = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+    const cashUsd = cashPos.reduce((s, p) => s + p.qty * p.avgPrice, 0);
+    const investedShare = current > 0 ? Math.max(0, Math.min(100, ((current - cashUsd) / current) * 100)) : 0;
+    const sparklineSource = validHistory.length >= 2
+      ? validHistory.slice(-24).map((p) => p.value)
+      : [baseline, current].filter((v) => v > 0);
+    const minSpark = sparklineSource.length ? Math.min(...sparklineSource) : 0;
+    const maxSpark = sparklineSource.length ? Math.max(...sparklineSource) : 0;
+    const rangeSpark = maxSpark - minSpark || 1;
+    const points = sparklineSource.map((value, index) => {
+      const x = sparklineSource.length === 1 ? 100 : (index / (sparklineSource.length - 1)) * 100;
+      const y = 100 - ((value - minSpark) / rangeSpark) * 100;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ");
+
+    return {
+      current,
+      baseline,
+      changeUsd,
+      changePct,
+      high,
+      low,
+      target,
+      targetProgress,
+      investedShare,
+      cashUsd,
+      historyCount: validHistory.length,
+      firstDate: first?.date,
+      lastDate: last?.date,
+      points,
+    };
+  }, [cashPos, liveCost, liveTotal, risk.targetAmount]);
 
   // Risk level config
   const RISK_CONFIGS: Record<string, { color: string; desc: string }> = {
@@ -462,19 +514,19 @@ export default function SettingsPage() {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                {[
+                {([
                   { label: "Макс. просадка (лимит)", value: `${risk.maxDrawdown}%`, note: actualDrawdown > 0 ? `факт: ${actualDrawdown.toFixed(1)}%` : undefined, warn: actualDrawdown > risk.maxDrawdown },
                   { label: "Макс. позиция (лимит)", value: `${risk.maxPositionSize}%`, note: topPos ? `факт: ${topPosPct.toFixed(1)}% (${topPos.ticker})` : undefined, warn: topPosPct > risk.maxPositionSize },
                   { label: "Мин. кэш (лимит)", value: `${risk.minCash}%`, note: `факт: ${cashPct.toFixed(1)}%`, warn: cashPct < risk.minCash },
                   { label: "Стоп-лосс", value: `${risk.stopLoss}%` },
                   { label: "Ребалансировка", value: risk.rebalancePeriod },
                   { label: "Целевой капитал", value: `$${Number(risk.targetAmount).toLocaleString("en-US")}`, note: liveTotal > 0 ? `факт: $${Math.round(liveTotal).toLocaleString("en-US")}` : undefined },
-                ].map(item => (
+                ] as { label: string; value: string; note?: string; warn?: boolean }[]).map(item => (
                   <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
                     <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{item.label}</span>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: 13, fontWeight: 700 }}>{item.value}</div>
-                      {item.note && <div style={{ fontSize: 10, color: (item as any).warn ? "#ef4444" : "var(--text-muted)", marginTop: 1 }}>{item.note}</div>}
+                      {item.note && <div style={{ fontSize: 10, color: item.warn ? "#ef4444" : "var(--text-muted)", marginTop: 1 }}>{item.note}</div>}
                     </div>
                   </div>
                 ))}
@@ -484,14 +536,14 @@ export default function SettingsPage() {
               {liveTotal > 0 && (
                 <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>Показатели портфеля</div>
-                  {[
+                  {([
                     { label: "Инструментов", value: instruments.length },
                     { label: "Доходность", value: `${livePnlPct >= 0 ? "+" : ""}${livePnlPct.toFixed(2)}%`, color: livePnlPct >= 0 ? "#22c55e" : "#ef4444" },
                     { label: "P&L", value: `${livePnl >= 0 ? "+" : ""}$${Math.round(livePnl).toLocaleString("en-US")}`, color: livePnl >= 0 ? "#22c55e" : "#ef4444" },
-                  ].map(m => (
+                  ] as { label: string; value: string | number; color?: string }[]).map(m => (
                     <div key={m.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                       <span style={{ color: "var(--text-secondary)" }}>{m.label}</span>
-                      <span style={{ fontWeight: 700, color: (m as any).color ?? "var(--text-primary)" }}>{m.value}</span>
+                      <span style={{ fontWeight: 700, color: m.color ?? "var(--text-primary)" }}>{m.value}</span>
                     </div>
                   ))}
                 </div>
@@ -538,37 +590,101 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Live portfolio stats */}
+            {/* Portfolio dynamics */}
             <div className="card" style={{ padding: 20 }}>
-              <div className="card-title">Текущие показатели портфеля</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <div className="card-title" style={{ marginBottom: 4 }}>Динамика портфеля</div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {portfolioDynamics.historyCount > 1
+                      ? `${portfolioDynamics.firstDate} → ${portfolioDynamics.lastDate}`
+                      : "История появится после фиксаций портфеля"}
+                  </div>
+                </div>
+                <div style={{
+                  padding: "4px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+                  background: portfolioDynamics.changeUsd >= 0 ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
+                  color: portfolioDynamics.changeUsd >= 0 ? "#22c55e" : "#ef4444",
+                  whiteSpace: "nowrap",
+                }}>
+                  {portfolioDynamics.changeUsd >= 0 ? "+" : ""}{portfolioDynamics.changePct.toFixed(2)}%
+                </div>
+              </div>
               {liveTotal <= 0 ? (
                 <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 16, textAlign: "center" }}>
                   Добавьте инструменты на странице Позиции
                 </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ height: 96, borderRadius: 8, background: "var(--bg-secondary)", border: "1px solid var(--border)", padding: 12 }}>
+                    {portfolioDynamics.points ? (
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width: "100%", height: "100%", display: "block" }}>
+                        <polyline
+                          points={portfolioDynamics.points}
+                          fill="none"
+                          stroke={portfolioDynamics.changeUsd >= 0 ? "#22c55e" : "#ef4444"}
+                          strokeWidth="3"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    ) : (
+                      <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12 }}>
+                        Недостаточно точек истории
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                    {[
+                      { label: "Капитал", value: `$${Math.round(liveTotal).toLocaleString("en-US")}` },
+                      { label: "Изменение", value: `${portfolioDynamics.changeUsd >= 0 ? "+" : ""}$${Math.round(portfolioDynamics.changeUsd).toLocaleString("en-US")}`, color: portfolioDynamics.changeUsd >= 0 ? "#22c55e" : "#ef4444" },
+                      { label: "P&L", value: `${livePnl >= 0 ? "+" : ""}$${Math.round(livePnl).toLocaleString("en-US")}`, color: livePnl >= 0 ? "#22c55e" : "#ef4444" },
+                      { label: "Доходность", value: `${livePnlPct >= 0 ? "+" : ""}${livePnlPct.toFixed(2)}%`, color: livePnlPct >= 0 ? "#22c55e" : "#ef4444" },
+                      { label: "Максимум", value: `$${Math.round(portfolioDynamics.high).toLocaleString("en-US")}` },
+                      { label: "Минимум", value: `$${Math.round(portfolioDynamics.low).toLocaleString("en-US")}` },
+                    ].map((item) => (
+                      <div key={item.label} style={{ padding: "10px 12px", borderRadius: 8, background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{item.label}</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: item.color ?? "var(--text-primary)" }}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
                   {[
-                    { label: "Название", value: portfolio.name },
-                    { label: "Капитал", value: `$${Math.round(liveTotal).toLocaleString("en-US")}` },
-                    { label: "Вложено", value: `$${Math.round(liveCost).toLocaleString("en-US")}` },
-                    { label: "P&L", value: `${livePnl >= 0 ? "+" : ""}$${Math.round(livePnl).toLocaleString("en-US")}`, color: livePnl >= 0 ? "#22c55e" : "#ef4444" },
-                    { label: "Доходность", value: `${livePnlPct >= 0 ? "+" : ""}${livePnlPct.toFixed(2)}%`, color: livePnlPct >= 0 ? "#22c55e" : "#ef4444" },
-                    { label: "Инструментов", value: `${instruments.length}` },
-                    { label: "Кэш в портфеле", value: `${cashPct.toFixed(1)}%` },
-                    { label: "Крупнейшая позиция", value: topPos ? `${topPos.ticker} (${topPosPct.toFixed(1)}%)` : "—" },
-                    { label: "Целевой капитал", value: `$${Number(risk.targetAmount).toLocaleString("en-US")}` },
-                    { label: "Выполнение цели", value: `${Math.min(100, Math.round(liveTotal / Number(risk.targetAmount) * 100))}%` },
-                    { label: "Горизонт", value: `${portfolio.horizon} лет` },
-                    { label: "Валюта", value: portfolio.currency },
-                  ].map((item, i, arr) => (
-                    <div key={item.label} style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center",
-                      padding: "9px 0", borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none",
-                    }}>
-                      <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>{item.label}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: (item as any).color ?? "var(--text-primary)" }}>{item.value}</span>
+                    { label: "Цель", value: `${portfolioDynamics.targetProgress.toFixed(1)}%`, pct: portfolioDynamics.targetProgress, color: "var(--accent)" },
+                    { label: "В рынке", value: `${portfolioDynamics.investedShare.toFixed(1)}%`, pct: portfolioDynamics.investedShare, color: "#3b82f6" },
+                    { label: "Кэш", value: `${cashPct.toFixed(1)}%`, pct: cashPct, color: "#22c55e" },
+                  ].map((row) => (
+                    <div key={row.label}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 6 }}>
+                        <span style={{ color: "var(--text-secondary)" }}>{row.label}</span>
+                        <span style={{ fontWeight: 700, color: "var(--text-primary)" }}>{row.value}</span>
+                      </div>
+                      <div style={{ height: 7, borderRadius: 999, background: "var(--bg-secondary)", overflow: "hidden" }}>
+                        <div style={{ width: `${Math.min(100, Math.max(0, row.pct))}%`, height: "100%", background: row.color, borderRadius: 999 }} />
+                      </div>
                     </div>
                   ))}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, paddingTop: 2 }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Инструментов</div>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{instruments.length}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Крупнейшая позиция</div>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{topPos ? `${topPos.ticker} (${topPosPct.toFixed(1)}%)` : "—"}</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Просадка</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: actualDrawdown > 10 ? "#ef4444" : "var(--text-primary)" }}>{actualDrawdown.toFixed(1)}%</div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>Валюта / горизонт</div>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{portfolio.currency} · {portfolio.horizon} лет</div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -609,7 +725,7 @@ export default function SettingsPage() {
             <div className="card" style={{ padding: 20 }}>
               <div className="card-title">Хранилище данных</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 0, marginBottom: 20 }}>
-                {LS_KEYS.map(({ key, label }) => {
+                {STORAGE_INFO.map(({ key, label }) => {
                   const raw = typeof window !== "undefined" ? localStorage.getItem(key) : null;
                   const size = raw ? (new Blob([raw]).size / 1024).toFixed(1) : null;
                   const count = (() => {

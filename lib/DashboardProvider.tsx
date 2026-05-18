@@ -1,20 +1,22 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useAuthStore } from "./store/useAuthStore";
-import { usePortfolioStore } from "./store/usePortfolioStore";
-import { useSettingsStore } from "./store/useSettingsStore";
+import { LS_POSITIONS_UPDATED_AT, usePortfolioStore } from "./store/usePortfolioStore";
 import { useQuotesStore } from "./store/useQuotesStore";
 import { createClient } from "./supabase/client";
 import useSWR from "swr";
 
-const fetcher = (url: string) => fetch(url).then(r => r.json());
+const fetcher = async (url: string) => {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Quote request failed: ${res.status}`);
+  return res.json();
+};
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
-  const { setUser, setAuthLoading, loadFromCloud, syncToCloud, user } = useAuthStore();
+  const { setUser, setAuthLoading, loadFromCloud, syncToCloud, scheduleSyncToCloud, user } = useAuthStore();
   const { positions, refreshPositions } = usePortfolioStore();
-  const { liveQuotes, updateQuotes, setQuotes, setQuoteStatus } = useQuotesStore();
+  const { liveQuotes, setQuotes, setQuoteStatus } = useQuotesStore();
   const supabase = createClient();
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 1. Auth Listener
   useEffect(() => {
@@ -48,21 +50,44 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(id);
   }, [user, syncToCloud]);
 
+  useEffect(() => {
+    if (!user) return;
+    const flush = () => { void syncToCloud(); };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", flush);
+    };
+  }, [user, syncToCloud]);
+
   // 3. Storage / Position refresh listener
   useEffect(() => {
-    const onCustom = () => refreshPositions();
+    const onCustom = () => {
+      try {
+        if (localStorage.getItem("positions-data")) {
+          localStorage.setItem(LS_POSITIONS_UPDATED_AT, new Date().toISOString());
+        }
+      } catch {}
+      refreshPositions();
+      scheduleSyncToCloud();
+    };
     const onStorage = (e: StorageEvent) => { if (e.key === "positions-data") refreshPositions(); };
     window.addEventListener("positions-updated", onCustom);
     window.addEventListener("storage", onStorage);
     return () => { window.removeEventListener("positions-updated", onCustom); window.removeEventListener("storage", onStorage); };
-  }, [refreshPositions]);
+  }, [refreshPositions, scheduleSyncToCloud]);
 
   
   // 4. Quotes via SWR
-  const stocks  = positions.filter(p => p.type !== "Кэш" && p.type !== "Крипто");
-  const cryptos = positions.filter(p => p.type === "Крипто");
-  const stockTickers = stocks.map(p=>p.ticker).join(",");
-  const cryptoTickers = cryptos.map(p=>p.ticker).join(",");
+  const stockTickers = useMemo(
+    () => [...new Set(positions.filter(p => p.type !== "Кэш" && p.type !== "Крипто").map(p => p.ticker))].join(","),
+    [positions],
+  );
+  const cryptoTickers = useMemo(
+    () => [...new Set(positions.filter(p => p.type === "Крипто").map(p => p.ticker))].join(","),
+    [positions],
+  );
 
   const { data: stockData, error: stockErr, isLoading: stockLd } = useSWR(stockTickers ? `/api/quotes?tickers=${stockTickers}` : null, fetcher, { refreshInterval: 30000 });
   const { data: cryptoData, error: cryptoErr, isLoading: cryptoLd } = useSWR(cryptoTickers ? `/api/crypto?tickers=${cryptoTickers}` : null, fetcher, { refreshInterval: 30000 });
@@ -77,10 +102,15 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     if (stockData || cryptoData) {
-      setQuotes({ ...stockData, ...cryptoData });
-      setQuoteStatus("ok");
+      const nextQuotes = { ...(stockData ?? {}), ...(cryptoData ?? {}) };
+      if (Object.keys(nextQuotes).length > 0) {
+        setQuotes(nextQuotes);
+        setQuoteStatus("ok");
+      } else if (stockTickers || cryptoTickers) {
+        setQuoteStatus("error");
+      }
     }
-  }, [stockData, cryptoData, stockErr, cryptoErr, stockLd, cryptoLd, setQuotes, setQuoteStatus]);
+  }, [stockData, cryptoData, stockErr, cryptoErr, stockLd, cryptoLd, stockTickers, cryptoTickers, setQuotes, setQuoteStatus]);
 
   useEffect(() => {
     const id = setInterval(() => {

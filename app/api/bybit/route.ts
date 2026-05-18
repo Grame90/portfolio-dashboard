@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-const API_KEY = process.env.BYBIT_API_SECRET; // Swapped as per user suggestion
-const API_SECRET = process.env.BYBIT_API_KEY; // Swapped as per user suggestion
+const API_KEY = process.env.BYBIT_API_KEY;
+const API_SECRET = process.env.BYBIT_API_SECRET;
 const BASE_URL = 'https://api.bybit.com';
 
 function generateSignature(params: string, secret: string): string {

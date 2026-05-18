@@ -7,6 +7,7 @@ import { lastUpdated } from "@/lib/mockData";
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import AIAnalyzer from "@/components/AIAnalyzer";
+import { importBackupPayload } from "@/lib/portfolioBackup";
 
 interface PageHeaderProps {
   title: string;
@@ -123,8 +124,7 @@ export default function PageHeader({ title, subtitle, showSnapshot = false }: Pa
         broker: "Bybit"
       }));
 
-      localStorage.setItem("positions-data", JSON.stringify([...current, ...newPositions]));
-      app.refreshPositions();
+      app.setPositions([...current, ...newPositions]);
       showToast(`Bybit: Синхронизировано ${newPositions.length} позиций`);
     } catch (err: any) {
       showToast(err.message, "#ef4444");
@@ -138,15 +138,11 @@ export default function PageHeader({ title, subtitle, showSnapshot = false }: Pa
     reader.onload = (ev) => {
       try {
         const payload = JSON.parse(ev.target?.result as string);
-        if (payload.positions) localStorage.setItem("positions-data", JSON.stringify(payload.positions));
-        if (payload.settings) localStorage.setItem("dashboard-settings", JSON.stringify(payload.settings));
-        if (payload.history) localStorage.setItem("portfolio-chart-history", JSON.stringify(payload.history));
-        if (payload.dividends) localStorage.setItem("dividends-received", JSON.stringify(payload.dividends));
-        if (payload.snapshots) localStorage.setItem("snapshots-data", JSON.stringify(payload.snapshots));
-        if (payload.targetStructure) localStorage.setItem("target-structure", JSON.stringify(payload.targetStructure));
+        const positions = importBackupPayload(payload);
+        if (positions.length > 0) app.setPositions(positions);
         app.refreshPositions();
         setMoreOpen(false);
-        showToast("Данные импортированы успешно");
+        showToast(`Данные импортированы: ${positions.length} позиций`);
       } catch {
         showToast("Ошибка импорта файла", "#ef4444");
       }

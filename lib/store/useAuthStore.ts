@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
-import { usePortfolioStore, LS_POSITIONS } from './usePortfolioStore';
-import { useSettingsStore } from './useSettingsStore';
+import { usePortfolioStore, LS_POSITIONS, LS_POSITIONS_UPDATED_AT } from './usePortfolioStore';
 
 const LS_EXTRA_KEYS = [
   "portfolio-chart-history",
@@ -24,6 +23,11 @@ function safeGet(key: string) {
 
 function safeSet(key: string, val: unknown) {
   try { if (val != null) localStorage.setItem(key, JSON.stringify(val)); } catch {}
+}
+
+function newerLocalData(localUpdatedAt: unknown, cloudUpdatedAt: unknown): boolean {
+  if (typeof localUpdatedAt !== "string" || typeof cloudUpdatedAt !== "string") return false;
+  return new Date(localUpdatedAt).getTime() > new Date(cloudUpdatedAt).getTime();
 }
 
 interface AuthState {
@@ -64,7 +68,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     [LS_POSITIONS, 'dashboard-settings', ...LS_EXTRA_KEYS].forEach(k => {
       try { localStorage.removeItem(k); } catch {}
     });
-    usePortfolioStore.getState().setPositions([]);
+    usePortfolioStore.getState().clearPositions();
   },
 
   loadFromCloud: async (uid) => {
@@ -82,6 +86,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (data) {
       const cloudPositions = data.positions ?? [];
       const localPositions = safeGet(LS_POSITIONS) ?? [];
+      const localUpdatedAt = localStorage.getItem(LS_POSITIONS_UPDATED_AT);
 
       if (cloudPositions.length === 0 && localPositions.length > 0) {
         // use local
@@ -90,7 +95,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
+      if (cloudPositions.length > 0 && localPositions.length > 0 && newerLocalData(localUpdatedAt, data.updated_at)) {
+        usePortfolioStore.getState().refreshPositions();
+        setTimeout(() => get().syncToCloud(), 3000);
+        return;
+      }
+
       if (data.positions) safeSet(LS_POSITIONS, data.positions);
+      if (data.positions) localStorage.setItem(LS_POSITIONS_UPDATED_AT, data.updated_at ?? new Date().toISOString());
       if (data.settings) safeSet('dashboard-settings', data.settings);
       
       LS_EXTRA_KEYS.forEach(k => {

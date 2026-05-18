@@ -13,8 +13,19 @@ export function useApp() {
   const totalCost = portfolio.positions.reduce((s, p) => s + p.qty * p.avgPrice, 0);
   const totalPnl = portfolioTotal - totalCost;
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-  const prevTotal = portfolio.positions.reduce((s, p) => s + p.qty * (quotes.liveQuotes[p.ticker]?.previousClose || p.avgPrice), 0);
-  const dailyChange = portfolioTotal - prevTotal;
+  // Daily change should rely on valid market "current vs previous close" deltas.
+  // If previousClose looks invalid/anomalous, treat daily delta for that position as 0.
+  const dailyChange = portfolio.positions.reduce((sum, p) => {
+    const q = quotes.liveQuotes[p.ticker];
+    if (!q) return sum;
+    const current = Number(q.current);
+    const previousClose = Number(q.previousClose);
+    if (!Number.isFinite(current) || !Number.isFinite(previousClose) || current <= 0 || previousClose <= 0) return sum;
+    const rel = Math.abs(current - previousClose) / previousClose;
+    if (rel > 0.5) return sum; // guard against broken feed spikes (>50% day move)
+    return sum + p.qty * (current - previousClose);
+  }, 0);
+  const prevTotal = portfolioTotal - dailyChange;
   const dailyChangePct = prevTotal > 0 ? (dailyChange / prevTotal) * 100 : 0;
 
   const computedPositions = portfolio.positions.map(p => {

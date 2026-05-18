@@ -125,6 +125,7 @@ export default function PortfolioPage() {
     targetShare:   (p as any).targetShare   ?? 0,
     live:          (p as any).live          ?? p.type !== "Кэш",
   }));
+  const positionsKey = positions.map((p) => `${p.id}:${p.ticker}:${p.qty}:${p.avgPrice}:${p.currentPrice}`).join("|");
   const setPositions = (updater: ((prev: LivePosition[]) => LivePosition[]) | LivePosition[]) => {
     const next = typeof updater === "function" ? updater(positions) : updater;
     app.setPositions(next as any);
@@ -222,24 +223,28 @@ export default function PortfolioPage() {
 
   // Sync live quotes from AppContext so all pages show the same prices
   useEffect(() => {
-    if (!Object.keys(app.liveQuotes).length) return;
-    setPositions((prev: any) => recompute(prev.map((p: any) => {
-      const q = app.liveQuotes[p.ticker];
-      if (!q || q.current <= 0) return p;
-      return { ...p, currentPrice: q.current, previousClose: q.previousClose };
-    })));
-  }, [app.liveQuotes]);
+    if (!Object.keys(app.liveQuotes).length || !positions.length) return;
+    setLastTick((prev) => {
+      const next = { ...prev };
+      for (const p of positions) {
+        const q = app.liveQuotes[p.ticker];
+        if (!q || q.current <= 0) continue;
+        next[p.id] = q.current > p.currentPrice ? "up" : q.current < p.currentPrice ? "down" : null;
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [app.liveQuotes, positionsKey]);
 
   const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[] }>>({});
   const [histLoaded, setHistLoaded] = useState(false);
 
   useEffect(() => {
     const initial = positions;
-    setPositions(initial);
     setLadderTickers(initial.filter(p => p.type !== "Кэш").map(p => p.ticker).slice(0, 5));
-    fetchQuotes(initial);
+    if (initial.length > 0) fetchQuotes(initial);
     const id = setInterval(() => {
-      fetchQuotes(initial);
+      if (initial.length > 0) fetchQuotes(initial);
     }, 25000);
 
     // Fetch 500 days of historical prices for period P&L calculation
@@ -257,7 +262,7 @@ export default function PortfolioPage() {
 
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchQuotes]);
+  }, [fetchQuotes, positionsKey]);
 
   
 

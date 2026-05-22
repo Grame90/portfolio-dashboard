@@ -7,6 +7,7 @@ import { DashboardProvider } from "@/lib/DashboardProvider";
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import { TooltipProvider } from "@/components/ui/Tooltip";
+import { LayoutEditorProvider } from "@/components/LayoutEditor";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, authLoading } = useApp();
@@ -35,20 +36,22 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Sidebar />
-      <main style={{
-        marginLeft: isMobile ? 0 : 72,
-        paddingBottom: isMobile ? 60 : 0,
-        flex: 1,
-        minHeight: "100vh",
-        overflowY: "auto",
-        overflowX: isMobile ? "hidden" : "auto",
-        maxWidth: isMobile ? "100vw" : undefined,
-      }}>
-        {children}
-      </main>
-    </div>
+    <LayoutEditorProvider>
+      <div style={{ display: "flex", minHeight: "100vh" }}>
+        <Sidebar />
+        <main style={{
+          marginLeft: isMobile ? 0 : 72,
+          paddingBottom: isMobile ? 60 : 0,
+          flex: 1,
+          minHeight: "100vh",
+          overflowY: "auto",
+          overflowX: isMobile ? "hidden" : "auto",
+          maxWidth: isMobile ? "100vw" : undefined,
+        }}>
+          {children}
+        </main>
+      </div>
+    </LayoutEditorProvider>
   );
 }
 

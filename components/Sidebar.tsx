@@ -243,7 +243,7 @@ export default function Sidebar() {
       width: 72, minHeight: "100vh",
       background: "var(--bg-secondary)", borderRight: "1px solid var(--border)",
       display: "flex", flexDirection: "column", alignItems: "center",
-      padding: "16px 0", position: "fixed", left: 0, top: 0, bottom: 0, zIndex: 50,
+      padding: "16px 0", position: "fixed", left: 0, top: 34, bottom: 0, zIndex: 50,
     }}>
       <div style={{
         width: 40, height: 40, borderRadius: 10, background: "var(--accent)",

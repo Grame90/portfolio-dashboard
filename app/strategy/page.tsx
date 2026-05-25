@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo } from "react";
+import useSWR from "swr";
 import PageHeader from "@/components/PageHeader";
 import {
   LineChart, Line, PieChart, Pie, Cell, BarChart, Bar,
@@ -8,6 +9,12 @@ import {
 } from "recharts";
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
+
+const macroFetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.json();
+};
 
 const TICKER_BETA: Record<string, number> = {
   BTC: 2.5, ETH: 2.8, SOL: 3.0, DOGE: 3.5, XRP: 2.2,
@@ -74,19 +81,14 @@ export default function StrategyPage() {
   const isMobile = useMobile();
   const app = useApp();
 
-  const [macroFactors, setMacroFactors] = useState<MacroFactor[]>(MACRO_FALLBACK);
-  const [macroUpdatedAt, setMacroUpdatedAt] = useState<string | null>(null);
-  const [macroLoading, setMacroLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/macro")
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d?.factors?.length) { setMacroFactors(d.factors); setMacroUpdatedAt(d.updatedAt); }
-      })
-      .catch(() => {})
-      .finally(() => setMacroLoading(false));
-  }, []);
+  // SWR dedups concurrent requests, caches across remounts (StrictMode), and
+  // revalidates on focus instead of firing 4× per page load.
+  const { data: macroData, isLoading: macroLoading } = useSWR("/api/macro", macroFetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  });
+  const macroFactors: MacroFactor[] = macroData?.factors?.length ? macroData.factors : MACRO_FALLBACK;
+  const macroUpdatedAt: string | null = macroData?.updatedAt ?? null;
   const goalProgress = app.settings.targetAmount > 0
     ? Math.min(100, (app.portfolioTotal / app.settings.targetAmount) * 100)
     : 0;

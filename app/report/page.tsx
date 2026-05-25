@@ -327,21 +327,29 @@ export default function ReportPage() {
     setSnapping(false);
   }
 
-  // Auto-snapshot at 03:00 Istanbul time
+  // Auto-snapshot at 03:00 Istanbul time.
+  // Read current portfolio state via ref to avoid re-creating the interval on
+  // every quote tick (liveQuotes changes ~3×/sec). Without the ref we'd tear
+  // down and re-arm the 60s timer constantly, racing the takeSnapshot call.
+  const takeSnapshotRef = useRef(takeSnapshot);
+  takeSnapshotRef.current = takeSnapshot;
+  const portfolioTotalRef = useRef(app.portfolioTotal);
+  portfolioTotalRef.current = app.portfolioTotal;
+
   useEffect(() => {
     function checkAutoSnap() {
       const hour = parseInt(new Date().toLocaleString("en-US", { timeZone: "Europe/Istanbul", hour: "numeric", hour12: false }));
       const stored = loadSnapshots();
       const today = todayStr();
       const alreadyToday = stored.some(r => r.date === today);
-      if (hour === 3 && !alreadyToday && app.portfolioTotal > 0) {
-        takeSnapshot();
+      if (hour === 3 && !alreadyToday && portfolioTotalRef.current > 0) {
+        takeSnapshotRef.current();
       }
     }
     checkAutoSnap();
     const id = setInterval(checkAutoSnap, 60000);
     return () => clearInterval(id);
-  }, [app.portfolioTotal, rates, app.dailyChange, app.liveQuotes, app.totalCost, app.totalPnl, app.totalPnlPct]);
+  }, []);
 
   function toggleLock(id: string) {
     setLockedRows(prev => {
@@ -510,8 +518,8 @@ export default function ReportPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
               <thead>
                 <tr style={{ background: "var(--bg-secondary)" }}>
-                  {["Дата","TRY","Дн. P&L","Общий P&L","Доход %","Бенч 10%","USD","EUR","TRY","RUB","BTC","Инвест.","Заметка",""].map(h => (
-                    <th key={h} style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-secondary)", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                  {["Дата","TRY","Дн. P&L","Общий P&L","Доход %","Бенч 10%","USD","EUR","TRY","RUB","BTC","Инвест.","Заметка",""].map((h, i) => (
+                    <th key={i} style={{ padding: "8px 10px", textAlign: "left", color: "var(--text-secondary)", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap", borderBottom: "1px solid var(--border)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>

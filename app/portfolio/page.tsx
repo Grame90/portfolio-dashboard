@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
+import { DailyAlertBadge } from "@/components/DailyAlert";
 import { useMobile } from "@/lib/useMobile";
 import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
 import { useApp } from "@/lib/useApp";
@@ -607,7 +608,7 @@ export default function PortfolioPage() {
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      <PageHeader title="ПОРТФЕЛЬ" subtitle="Главная сводка и управление портфелем" showSnapshot />
+      <PageHeader title="ПОРТФЕЛЬ" subtitle="Главная сводка и управление портфелем" showSnapshot titleBadge={<DailyAlertBadge />} />
 
       <div style={{ padding: isMobile ? "12px" : "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Row 1: Summary */}

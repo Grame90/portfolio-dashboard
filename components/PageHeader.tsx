@@ -13,9 +13,10 @@ interface PageHeaderProps {
   title: string;
   subtitle: string;
   showSnapshot?: boolean;
+  titleBadge?: React.ReactNode;
 }
 
-export default function PageHeader({ title, subtitle, showSnapshot = false }: PageHeaderProps) {
+export default function PageHeader({ title, subtitle, showSnapshot = false, titleBadge }: PageHeaderProps) {
   const app = useApp();
   const isMobile = useMobile();
   const [lastSnap, setLastSnap] = useState(lastUpdated);
@@ -173,9 +174,12 @@ export default function PageHeader({ title, subtitle, showSnapshot = false }: Pa
         padding: isMobile ? "12px 14px" : "16px 24px", borderBottom: "1px solid var(--border)",
         background: "var(--bg-secondary)", position: "sticky", top: 0, zIndex: 10,
       }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: isMobile ? 16 : 22, fontWeight: 700, color: "var(--text-primary)" }}>{title}</h1>
-          {!isMobile && <p style={{ margin: 0, fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{subtitle}</p>}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: isMobile ? 16 : 22, fontWeight: 700, color: "var(--text-primary)" }}>{title}</h1>
+            {!isMobile && <p style={{ margin: 0, fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{subtitle}</p>}
+          </div>
+          {titleBadge && <div>{titleBadge}</div>}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>

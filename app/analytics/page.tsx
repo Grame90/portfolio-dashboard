@@ -66,7 +66,7 @@ export default function AnalyticsPage() {
     } catch {}
   }, []);
 
-  const { mergedTimeline } = usePortfolioHistory(app.positions, history, app.portfolioTotal, app.totalCost);
+  const { mergedTimeline, histLoaded: portfolioHistLoaded } = usePortfolioHistory(app.positions, history, app.portfolioTotal, app.totalCost);
 
   const divPositions = useMemo(() => {
     return app.positions
@@ -198,14 +198,22 @@ export default function AnalyticsPage() {
       period === "YTD" ? `${new Date().getFullYear()}-01-01` : "0000-00-00";
     const filtered = mergedTimeline.filter(h => h.date >= cutoff);
     const filteredBm = bmHistory.filter(b => b.date >= cutoff);
-    if (!filtered.length) return filteredBm.map(b => ({ date: b.date.slice(5), portfolio: 0, sp500: b.sp500, nasdaq: b.nasdaq, gold: b.gold }));
+    if (!filtered.length) return [];
     const base = filtered[0].value;
     const baseSpy = filteredBm[0]?.sp500 ?? 0;
     const baseQqq = filteredBm[0]?.nasdaq ?? 0;
     const baseGld = filteredBm[0]?.gold ?? 0;
-    return filtered.map((h, i) => {
-      const bmIdx = filteredBm.length > 1 ? Math.round(i * (filteredBm.length - 1) / Math.max(filtered.length - 1, 1)) : 0;
-      const bm = filteredBm[bmIdx];
+    const bmByDate = new Map(filteredBm.map(b => [b.date, b]));
+    return filtered.map((h) => {
+      let bm = bmByDate.get(h.date);
+      if (!bm && filteredBm.length) {
+        let lo = 0, hi = filteredBm.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (filteredBm[mid].date < h.date) lo = mid + 1; else hi = mid;
+        }
+        bm = filteredBm[lo];
+      }
       return {
         date: h.date.slice(5),
         portfolio: parseFloat(((h.value / base - 1) * 100).toFixed(2)),
@@ -217,10 +225,12 @@ export default function AnalyticsPage() {
   }, [mergedTimeline, period, bmHistory]);
 
   const portfolioReturn = useMemo(() => {
-    const filtered = period === "1М" ? mergedTimeline.slice(-30) :
-      period === "3М" ? mergedTimeline.slice(-90) :
-      period === "6М" ? mergedTimeline.slice(-180) :
-      period === "1Г" ? mergedTimeline.slice(-365) : mergedTimeline;
+    const cutoff = period === "1М" ? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10) :
+      period === "3М" ? new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10) :
+      period === "6М" ? new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10) :
+      period === "1Г" ? new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10) :
+      period === "YTD" ? `${new Date().getFullYear()}-01-01` : "0000-00-00";
+    const filtered = mergedTimeline.filter(h => h.date >= cutoff);
     if (filtered.length < 2) return null;
     const ret = (filtered[filtered.length - 1].value / filtered[0].value - 1) * 100;
     return (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%";
@@ -231,8 +241,8 @@ export default function AnalyticsPage() {
     const allTickers = [...new Set([...posTickers, "SPY", "QQQ", "GLD"])];
     setHistLoading(true);
     fetch(`/api/historical?tickers=${allTickers.join(",")}&days=365`)
-      .then(r => r.json())
-      .then((d: Record<string, { dates: string[]; closes: number[]; returns: number[] }>) => { setHistData(d); setHistLoading(false); })
+      .then(r => r.ok ? r.json() : {})
+      .then((d: Record<string, { dates: string[]; closes: number[]; returns: number[] }>) => { setHistData(d ?? {}); setHistLoading(false); })
       .catch(() => setHistLoading(false));
   }, [app.positions]);
 
@@ -405,18 +415,24 @@ export default function AnalyticsPage() {
                 </div>
               ))}
             </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={portfolioChartData}>
-                <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#555577" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 9, fill: "#555577" }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v.toFixed(0)}%`} />
-                <Tooltip contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", fontSize: 11 }} formatter={(v: any) => [`${v.toFixed(2)}%`]} />
-                <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="3 3" />
-                <Line type="monotone" dataKey="portfolio" stroke="#7c3aed" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="sp500" stroke="#22c55e" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
-                <Line type="monotone" dataKey="nasdaq" stroke="#3b82f6" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
-                <Line type="monotone" dataKey="gold" stroke="#f59e0b" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
-              </LineChart>
-            </ResponsiveContainer>
+            {portfolioChartData.length >= 2 ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={portfolioChartData}>
+                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#555577" }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 9, fill: "#555577" }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v.toFixed(0)}%`} />
+                  <Tooltip contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", fontSize: 11 }} formatter={(v: any) => [`${v.toFixed(2)}%`]} />
+                  <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="3 3" />
+                  <Line type="monotone" dataKey="portfolio" stroke="#7c3aed" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="sp500" stroke="#22c55e" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                  <Line type="monotone" dataKey="nasdaq" stroke="#3b82f6" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                  <Line type="monotone" dataKey="gold" stroke="#f59e0b" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "0 16px" }}>
+                {(histLoading || !portfolioHistLoaded) ? "Загрузка исторических данных…" : "Недостаточно данных. Данные появятся после нескольких дней работы."}
+              </div>
+            )}
           </div>
 
           <div className="card">

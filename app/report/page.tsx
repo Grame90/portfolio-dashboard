@@ -327,14 +327,14 @@ export default function ReportPage() {
     setSnapping(false);
   }
 
-  // Auto-snapshot at 22:00 Istanbul time
+  // Auto-snapshot at 03:00 Istanbul time
   useEffect(() => {
     function checkAutoSnap() {
       const hour = parseInt(new Date().toLocaleString("en-US", { timeZone: "Europe/Istanbul", hour: "numeric", hour12: false }));
       const stored = loadSnapshots();
       const today = todayStr();
       const alreadyToday = stored.some(r => r.date === today);
-      if (hour >= 22 && !alreadyToday && app.portfolioTotal > 0) {
+      if (hour === 3 && !alreadyToday && app.portfolioTotal > 0) {
         takeSnapshot();
       }
     }
@@ -405,7 +405,7 @@ export default function ReportPage() {
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      <PageHeader title="ОТЧЁТ" subtitle="Ежедневные снэпшоты портфеля — автосохранение в 22:00 по Стамбулу" />
+      <PageHeader title="ОТЧЁТ" subtitle="Ежедневные снэпшоты портфеля — автосохранение в 03:00 по Стамбулу" />
 
       <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
 
@@ -519,7 +519,7 @@ export default function ReportPage() {
                 {rows.length === 0 ? (
                   <tr>
                     <td colSpan={14} style={{ padding: "32px", textAlign: "center", color: "var(--text-secondary)" }}>
-                      Снэпшотов пока нет. Первый создастся автоматически в 22:00 по Стамбулу, или нажмите «+ Снэпшот сейчас».
+                      Снэпшотов пока нет. Первый создастся автоматически в 03:00 по Стамбулу, или нажмите «+ Снэпшот сейчас».
                     </td>
                   </tr>
                 ) : rows.map((row, idx) => {
@@ -679,7 +679,7 @@ export default function ReportPage() {
         )}
 
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          Снэпшоты фиксируются автоматически в 22:00 по московскому/стамбульскому времени (UTC+3). Заметки редактируются двойным кликом (строки без замка).
+          Снэпшоты фиксируются автоматически в 03:00 по стамбульскому времени (UTC+3). Заметки редактируются двойным кликом (строки без замка).
         </div>
       </div>
     </div>

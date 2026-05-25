@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import PageHeader from "@/components/PageHeader";
+import { DailyAlertBadge } from "@/components/DailyAlert";
 import { useMobile } from "@/lib/useMobile";
 import { useMarketStatus, formatEtTime } from "@/lib/marketStatus";
 import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
@@ -764,7 +765,7 @@ export default function PositionsPage() {
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      <PageHeader title="ПОЗИЦИИ" subtitle="Детализация всех активов портфеля" showSnapshot />
+      <PageHeader title="ПОЗИЦИИ" subtitle="Детализация всех активов портфеля" showSnapshot titleBadge={<DailyAlertBadge />} />
 
       <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
 

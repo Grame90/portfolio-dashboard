@@ -5,6 +5,7 @@ import { LS_POSITIONS_UPDATED_AT, usePortfolioStore } from "./store/usePortfolio
 import { useQuotesStore } from "./store/useQuotesStore";
 import { createClient } from "./supabase/client";
 import useSWR from "swr";
+import { getTradingDayKey, isTradingDayStarted, isMarketHoursNow, loadDayBaseline, saveDayBaseline } from "./tradingDay";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url, { cache: "no-store" });
@@ -36,8 +37,12 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const u = session?.user ?? null;
       setUser(u);
-      if (u) await loadFromCloud(u.id);
-      else refreshPositions();
+      try {
+        if (u) await loadFromCloud(u.id);
+        else refreshPositions();
+      } catch {
+        setAuthLoading(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -113,25 +118,42 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, [stockData, cryptoData, stockErr, cryptoErr, stockLd, cryptoLd, stockTickers, cryptoTickers, setQuotes, setQuoteStatus]);
 
   useEffect(() => {
+    // 300ms interval. Simulated price is clamped to ±0.10% of the last
+    // real SWR price (realQuotes) so drift is always bounded.
+    const INTERVAL = 300;
+    const MAX_DRIFT = 0.001; // 0.10%
     const id = setInterval(() => {
-
-      const currentQuotes = useQuotesStore.getState().liveQuotes;
-      const next = { ...currentQuotes };
-      let changed = false;
-      for (const ticker of Object.keys(next)) {
-        const q = next[ticker];
-        if (!q.current) continue;
-        const delta = q.current * (Math.random() * 0.003 - 0.0015);
-        next[ticker] = { ...q, current: Math.round((q.current + delta) * 100) / 100 };
-        changed = true;
-      }
-      if (changed) setQuotes(next);
-    }, 3000);
+      const { quoteStatus } = useQuotesStore.getState();
+      if (quoteStatus !== "ok" || !isMarketHoursNow()) return;
+      useQuotesStore.setState(state => {
+        const next = { ...state.liveQuotes };
+        let changed = false;
+        for (const ticker of Object.keys(next)) {
+          const q = next[ticker];
+          const anchor = state.realQuotes[ticker]?.current ?? q.current;
+          if (!q.current || !anchor) continue;
+          const delta = q.current * (Math.random() * 0.003 - 0.0015);
+          const raw = q.current + delta;
+          const lo = anchor * (1 - MAX_DRIFT);
+          const hi = anchor * (1 + MAX_DRIFT);
+          const clamped = Math.max(lo, Math.min(hi, raw));
+          const precision = clamped < 0.01 ? 8 : clamped < 1 ? 6 : 2;
+          next[ticker] = { ...q, current: parseFloat(clamped.toFixed(precision)) };
+          changed = true;
+        }
+        return changed ? { liveQuotes: next } : state;
+      });
+    }, INTERVAL);
     return () => clearInterval(id);
-  }, [setQuotes]);
+  }, []);
 
-  // 5. Daily auto-snapshot
-  const autoSnapRef = useRef("");
+  // 5. Daily auto-snapshot + Istanbul 06:00 day-start baseline
+  const autoSnapRef    = useRef("");
+  const dayBaselineRef = useRef("");
+  // Tracks whether we've already saved the baseline with real live prices this session.
+  // Prevents a stale cost-basis value from being locked in before quotes load.
+  const baselineLiveRef = useRef(false);
+
   useEffect(() => {
     const portfolioTotal = positions.reduce((s, p) => s + p.qty * (liveQuotes[p.ticker]?.current || p.avgPrice), 0);
     const totalCost = positions.reduce((s, p) => s + p.qty * p.avgPrice, 0);
@@ -139,6 +161,31 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
 
     if (!positions.length || portfolioTotal <= 0) return;
+
+    // ── Istanbul 06:00 day-start baseline ──────────────────────────────────
+    // Only save when live quotes are loaded — avgPrice (cost) would show total
+    // unrealised gain as "today's profit" if saved before quotes arrive.
+    if (isTradingDayStarted()) {
+      const dayKey = getTradingDayKey();
+      const qs = useQuotesStore.getState().quoteStatus;
+      if (qs === "ok") {
+        // Reset the live-save flag when a new trading day starts (tab stays open overnight)
+        if (dayKey !== dayBaselineRef.current) baselineLiveRef.current = false;
+        if (!baselineLiveRef.current) {
+          // First live-price save for this trading day → write/overwrite baseline
+          baselineLiveRef.current = true;
+          dayBaselineRef.current = dayKey;
+          saveDayBaseline(portfolioTotal);
+        }
+      } else if (dayBaselineRef.current !== dayKey && !loadDayBaseline()) {
+        // Quotes not yet loaded AND no baseline at all → save placeholder with avgPrice
+        // (will be overwritten once quotes load due to baselineLiveRef guard above)
+        dayBaselineRef.current = dayKey;
+        saveDayBaseline(portfolioTotal);
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     const today = new Date().toISOString().slice(0, 10);
     if (autoSnapRef.current === today) return;
     try { if (localStorage.getItem("auto-snapshot-date") === today) { autoSnapRef.current = today; return; } } catch {}
@@ -169,6 +216,64 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     } catch {}
     window.dispatchEvent(new Event("portfolio-snapshot"));
   }, [positions, liveQuotes]);
+
+  // 6. Scheduled daily snapshot at 03:00 Istanbul (= 00:00 UTC)
+  useEffect(() => {
+    let timerId: ReturnType<typeof setTimeout>;
+
+    function takeScheduledSnapshot() {
+      const { positions: pos } = usePortfolioStore.getState();
+      const { liveQuotes: lq } = useQuotesStore.getState();
+      if (!pos.length) { schedule(); return; }
+
+      const total = pos.reduce((s, p) => s + p.qty * (lq[p.ticker]?.current || p.avgPrice), 0);
+      const cost  = pos.reduce((s, p) => s + p.qty * p.avgPrice, 0);
+      const pnl   = total - cost;
+      const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
+      if (total <= 0) { schedule(); return; }
+
+      const now = new Date();
+      const snap = {
+        date: now.toLocaleDateString("ru-РУ", { day: "2-digit", month: "2-digit", year: "numeric" }),
+        time: now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
+        capital: Math.round(total),
+        cost: Math.round(cost),
+        profit: Math.round(pnl),
+        profitPct: pnlPct.toFixed(2) + "%",
+        comment: "Авто 03:00",
+      };
+      try {
+        const prev = JSON.parse(localStorage.getItem("snapshots-data") || "[]");
+        prev.unshift(snap);
+        localStorage.setItem("snapshots-data", JSON.stringify(prev.slice(0, 365)));
+      } catch {}
+      try {
+        const today = now.toISOString().slice(0, 10);
+        const hist: { date: string; value: number; cost: number }[] = JSON.parse(
+          localStorage.getItem("portfolio-chart-history") || "[]"
+        );
+        const pt = { date: today, value: Math.round(total), cost: Math.round(cost) };
+        const idx = hist.findIndex(h => h.date === today);
+        if (idx >= 0) hist[idx] = pt; else hist.push(pt);
+        hist.sort((a, b) => a.date.localeCompare(b.date));
+        localStorage.setItem("portfolio-chart-history", JSON.stringify(hist.slice(-730)));
+      } catch {}
+      window.dispatchEvent(new Event("portfolio-snapshot"));
+      schedule();
+    }
+
+    function schedule() {
+      // 03:00 Istanbul = 00:00 UTC
+      const now = new Date();
+      const next = new Date(now);
+      next.setUTCHours(0, 0, 0, 0);
+      if (next.getTime() <= now.getTime()) next.setUTCDate(next.getUTCDate() + 1);
+      timerId = setTimeout(takeScheduledSnapshot, next.getTime() - now.getTime());
+    }
+
+    schedule();
+    return () => clearTimeout(timerId);
+  }, []);
 
   return <>{children}</>;
 }

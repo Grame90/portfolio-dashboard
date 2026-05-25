@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import {
   LineChart, Line, PieChart, Pie, Cell, BarChart, Bar,
@@ -32,13 +32,14 @@ const PORTFOLIO_RULES = [
   "Инвестируй в растущие активы и тренды",
 ];
 
-const MACRO_FACTORS = [
-  { factor: "Инфляция (CPI)", current: "2.9%", forecast: "↓ 2.5%", impact: "Положительное" },
-  { factor: "Ставка ФРС", current: "4.25–4.50%", forecast: "↓ 3.75%", impact: "Положительное" },
-  { factor: "ВВП (США)", current: "2.3%", forecast: "→ 2.1%", impact: "Нейтральное" },
-  { factor: "Безработица", current: "4.1%", forecast: "↑ 4.3%", impact: "Нейтральное" },
-  { factor: "Рынок акций (S&P 500)", current: "5,560", forecast: "↑ 5,900", impact: "Положительное" },
-  { factor: "Цена золота", current: "3,200", forecast: "↑ 3,500", impact: "Положительное" },
+type MacroFactor = { factor: string; current: string; forecast: string; impact: string };
+const MACRO_FALLBACK: MacroFactor[] = [
+  { factor: "Инфляция (CPI)",    current: "—", forecast: "—", impact: "Нейтральное" },
+  { factor: "Ставка ФРС",        current: "—", forecast: "—", impact: "Нейтральное" },
+  { factor: "ВВП (США)",         current: "—", forecast: "—", impact: "Нейтральное" },
+  { factor: "Безработица",       current: "—", forecast: "—", impact: "Нейтральное" },
+  { factor: "S&P 500",           current: "—", forecast: "—", impact: "Нейтральное" },
+  { factor: "Цена золота",       current: "—", forecast: "—", impact: "Нейтральное" },
 ];
 
 const TYPE_COLORS: Record<string, string> = {
@@ -72,6 +73,20 @@ function CircleProgress({ value, size = 90, color = "#7c3aed" }: { value: number
 export default function StrategyPage() {
   const isMobile = useMobile();
   const app = useApp();
+
+  const [macroFactors, setMacroFactors] = useState<MacroFactor[]>(MACRO_FALLBACK);
+  const [macroUpdatedAt, setMacroUpdatedAt] = useState<string | null>(null);
+  const [macroLoading, setMacroLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/macro")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.factors?.length) { setMacroFactors(d.factors); setMacroUpdatedAt(d.updatedAt); }
+      })
+      .catch(() => {})
+      .finally(() => setMacroLoading(false));
+  }, []);
   const goalProgress = app.settings.targetAmount > 0
     ? Math.min(100, (app.portfolioTotal / app.settings.targetAmount) * 100)
     : 0;
@@ -454,23 +469,28 @@ export default function StrategyPage() {
         {/* Row 3: Macro + AI signals + Long-term strategy */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1.2fr 1fr", gap: 12 }}>
           <div className="card">
-            <div className="card-title">Макроэкономический прогноз</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div className="card-title" style={{ margin: 0 }}>Макроэкономический прогноз</div>
+              <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
+                {macroLoading ? "загрузка…" : macroUpdatedAt ? `обновлено ${new Date(macroUpdatedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}` : "FRED · Yahoo Finance"}
+              </span>
+            </div>
             <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>
-                  {["Фактор", "Текущая ситуация", "Прогноз (6-12 мес.)", "Влияние на портфель"].map((h) => (
+                  {["Фактор", "Текущее", "Тренд", "Влияние"].map((h) => (
                     <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontSize: 11 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {MACRO_FACTORS.map((m) => (
+                {macroFactors.map((m) => (
                   <tr key={m.factor} style={{ borderBottom: "1px solid var(--border)" }}>
-                    <td style={{ padding: "7px 8px" }}>{m.factor}</td>
-                    <td style={{ padding: "7px 8px", color: "var(--text-secondary)" }}>{m.current}</td>
-                    <td style={{ padding: "7px 8px", fontWeight: 600 }}>{m.forecast}</td>
+                    <td style={{ padding: "7px 8px", fontWeight: 600 }}>{m.factor}</td>
+                    <td style={{ padding: "7px 8px", color: "var(--text-primary)", fontWeight: 700 }}>{m.current}</td>
+                    <td style={{ padding: "7px 8px", color: "var(--text-secondary)", fontSize: 11 }}>{m.forecast}</td>
                     <td style={{ padding: "7px 8px" }}>
-                      <span style={{ color: m.impact === "Положительное" ? "#22c55e" : m.impact === "Отрицательное" ? "#ef4444" : "#f59e0b", fontWeight: 600 }}>
+                      <span style={{ color: m.impact === "Положительное" ? "#22c55e" : m.impact === "Отрицательное" ? "#ef4444" : "#f59e0b", fontWeight: 600, fontSize: 11 }}>
                         {m.impact}
                       </span>
                     </td>

@@ -125,7 +125,8 @@ export default function PortfolioPage() {
     targetShare:   (p as any).targetShare   ?? 0,
     live:          (p as any).live          ?? p.type !== "Кэш",
   }));
-  const positionsKey = positions.map((p) => `${p.id}:${p.ticker}:${p.qty}:${p.avgPrice}:${p.currentPrice}`).join("|");
+  // Excludes currentPrice so the live-quote sync effect doesn't cause an infinite loop.
+  const positionsKey = positions.map((p) => `${p.id}:${p.ticker}:${p.qty}:${p.avgPrice}`).join("|");
   const setPositions = (updater: ((prev: LivePosition[]) => LivePosition[]) | LivePosition[]) => {
     const next = typeof updater === "function" ? updater(positions) : updater;
     app.setPositions(next as any);
@@ -145,8 +146,9 @@ export default function PortfolioPage() {
   const dragColRef = useRef<ColId | null>(null);
   const [dragOverCol, setDragOverCol] = useState<ColId | null>(null);
   const [actionTooltip, setActionTooltip] = useState<{ id: number; x: number; y: number } | null>(null);
-  const [ladderStep, setLadderStep] = useState(DEFAULT_LADDER_STEP);
-  const [ladderLevels, setLadderLevels] = useState(DEFAULT_LADDER_LEVELS);
+  const [ladderStep, setLadderStep] = useState(() => { try { const s = localStorage.getItem("ladder-step"); return s ? Number(s) : DEFAULT_LADDER_STEP; } catch { return DEFAULT_LADDER_STEP; } });
+  const [ladderLevels, setLadderLevels] = useState(() => { try { const s = localStorage.getItem("ladder-levels"); return s ? Number(s) : DEFAULT_LADDER_LEVELS; } catch { return DEFAULT_LADDER_LEVELS; } });
+  const [ladderSaved, setLadderSaved] = useState(false);
   const [ladderTickers, setLadderTickers] = useState<string[]>([]);
   const [ladderExpanded, setLadderExpanded] = useState(false);
   const [snapshotExpanded, setSnapshotExpanded] = useState(false);
@@ -155,7 +157,7 @@ export default function PortfolioPage() {
   const [mergeByTicker, setMergeByTicker] = useState(true);
 
   const displayPositions = useMemo(() => {
-    if (!mergeByTicker) return positions;
+    if (!mergeByTicker) return positions.filter(p => p.value >= 10);
     const map = new Map<string, LivePosition>();
     for (const p of positions) {
       const existing = map.get(p.ticker);
@@ -178,7 +180,7 @@ export default function PortfolioPage() {
         });
       }
     }
-    return recompute([...map.values()]);
+    return recompute([...map.values()]).filter(p => p.value >= 10);
   }, [positions, mergeByTicker]);
 
   const fetchQuotes = useCallback(async (current: LivePosition[]) => {
@@ -221,18 +223,21 @@ export default function PortfolioPage() {
     }
   }, []);
 
-  // Sync live quotes from AppContext so all pages show the same prices
+  // Sync live quotes from AppContext — updates both prices and tick direction.
   useEffect(() => {
     if (!Object.keys(app.liveQuotes).length || !positions.length) return;
-    setLastTick((prev) => {
-      const next = { ...prev };
-      for (const p of positions) {
-        const q = app.liveQuotes[p.ticker];
-        if (!q || q.current <= 0) continue;
-        next[p.id] = q.current > p.currentPrice ? "up" : q.current < p.currentPrice ? "down" : null;
-      }
-      return next;
+    let anyChange = false;
+    const tickUpdates: Record<number, "up" | "down" | null> = {};
+    const updated = positions.map(p => {
+      const q = app.liveQuotes[p.ticker];
+      if (!q || q.current <= 0) return p;
+      tickUpdates[p.id] = q.current > p.currentPrice ? "up" : q.current < p.currentPrice ? "down" : null;
+      if (q.current === p.currentPrice) return p;
+      anyChange = true;
+      return { ...p, currentPrice: q.current, previousClose: q.previousClose };
     });
+    if (anyChange) app.setPositions(recompute(updated) as any);
+    setLastTick(prev => ({ ...prev, ...tickUpdates }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app.liveQuotes, positionsKey]);
 
@@ -658,7 +663,7 @@ export default function PortfolioPage() {
           {(() => {
             const groups: Record<string, { value: number; color: string }> = {};
             const typeColors: Record<string, string> = { ETF: "#7c3aed", Акция: "#3b82f6", Крипто: "#f59e0b", Сырьё: "#22c55e", Кэш: "#94a3b8", Облигация: "#06b6d4" };
-            positions.forEach((p) => {
+            positions.filter(p => p.value >= 10).forEach((p) => {
               const val = p.qty * p.currentPrice;
               if (!groups[p.type]) groups[p.type] = { value: 0, color: typeColors[p.type] ?? "#9d6ef5" };
               groups[p.type].value += val;
@@ -947,13 +952,22 @@ export default function PortfolioPage() {
                         case "name":         return <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>{p.name}</span>;
                         case "qty":          return p.qty > 0 ? p.qty.toFixed(2) : "–";
                         case "avgPrice":     return p.avgPrice > 0 ? p.avgPrice.toFixed(2) : "–";
-                        case "currentPrice": return (
-                          <span style={{ fontWeight: 600, color: tick === "up" ? "#22c55e" : tick === "down" ? "#ef4444" : "var(--text-primary)" }}>
-                            {p.currentPrice > 0 ? p.currentPrice.toFixed(2) : "–"}
-                            {tick === "up" && <span style={{ marginLeft: 3, fontSize: 9 }}>▲</span>}
-                            {tick === "down" && <span style={{ marginLeft: 3, fontSize: 9 }}>▼</span>}
-                          </span>
-                        );
+                        case "currentPrice": {
+                          const fmtPrice = (v: number) =>
+                            v <= 0 ? "–" : v < 0.01 ? v.toFixed(8) : v < 1 ? v.toFixed(6) : v.toFixed(2);
+                          const flashCls = tick === "up" ? "price-flash-up" : tick === "down" ? "price-flash-down" : "";
+                          return (
+                            <span
+                              className={flashCls}
+                              style={{ fontWeight: 600, display: "inline-block", padding: "0 3px",
+                                color: tick === "up" ? "#22c55e" : tick === "down" ? "#ef4444" : "var(--text-primary)" }}
+                            >
+                              {fmtPrice(p.currentPrice)}
+                              {tick === "up" && <span style={{ marginLeft: 3, fontSize: 9 }}>▲</span>}
+                              {tick === "down" && <span style={{ marginLeft: 3, fontSize: 9 }}>▼</span>}
+                            </span>
+                          );
+                        }
                         case "value":        return <span style={{ fontWeight: 600 }}>{p.value.toLocaleString("en-US")}</span>;
                         case "pnl":          return <span style={{ color: p.pnl >= 0 ? "#22c55e" : "#ef4444" }}>{p.pnl >= 0 ? "+" : ""}{p.pnl.toLocaleString("en-US")}</span>;
                         case "pnlPct":       return <span style={{ color: p.pnlPct >= 0 ? "#22c55e" : "#ef4444" }}>{p.pnlPct >= 0 ? "+" : ""}{p.pnlPct.toFixed(2)}%</span>;
@@ -1057,106 +1071,83 @@ export default function PortfolioPage() {
               <span style={{ fontSize: 9, color: "var(--text-muted)" }}>равновзвешенная</span>
             </div>
 
-            {/* Summary row */}
             {(() => {
-              const nonCashItems = positions.filter(p => p.type !== "Кэш");
-              const eqTarget = nonCashItems.length > 0 ? parseFloat((100 / nonCashItems.length).toFixed(2)) : 0;
-              const rows = positions.map(p => {
-                const target = p.type === "Кэш" ? p.share : eqTarget;
-                const dev = p.share - target;
-                return { id: p.id, ticker: p.ticker, target, liveShare: p.share, dev, color: p.color, type: p.type };
+              // Merge same tickers (different brokers) into one row
+              const tickerMap = new Map<string, { value: number; name: string; color: string }>();
+              positions.filter(p => p.type !== "Кэш" && p.value >= 10).forEach(p => {
+                const ex = tickerMap.get(p.ticker);
+                if (ex) ex.value += p.value;
+                else tickerMap.set(p.ticker, { value: p.value, name: p.name, color: p.color });
               });
-              const ok = rows.filter(r => r.type !== "Кэш" && Math.abs(r.dev) <= 1.5).length;
-              const under = rows.filter(r => r.type !== "Кэш" && r.dev < -1.5).length;
-              const over = rows.filter(r => r.type !== "Кэш" && r.dev > 1.5).length;
-              const maxScale = rows.length > 0 ? Math.max(...rows.map(r => Math.max(r.liveShare, r.target))) * 1.15 : 100;
+              const mergedTotal = [...tickerMap.values()].reduce((s, v) => s + v.value, 0) || 1;
+              const uniqueTickers = [...tickerMap.entries()];
+              const eqTarget = uniqueTickers.length > 0 ? parseFloat((100 / uniqueTickers.length).toFixed(2)) : 0;
+              const rows = uniqueTickers.map(([ticker, meta]) => {
+                const current = (meta.value / mergedTotal) * 100;
+                const target = eqTarget;
+                const gap = target - current;
+                const gapUsd = Math.round((gap / 100) * portfolioTotal);
+                const fillPct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+                const isOver  = gap < -1.5;
+                const isUnder = gap > 1.5;
+                return { id: ticker, ticker, name: meta.name, current, target, gap, gapUsd, fillPct, color: meta.color, isOver, isUnder };
+              }).sort((a, b) => b.gap - a.gap); // most underweight first
+
+              const ok    = rows.filter(r => !r.isOver && !r.isUnder).length;
+              const under = rows.filter(r => r.isUnder).length;
+              const over  = rows.filter(r => r.isOver).length;
 
               return (
                 <>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(34,197,94,0.12)", color: "#22c55e", fontWeight: 600 }}>✓ {ok} в норме</span>
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(59,130,246,0.12)", color: "#3b82f6", fontWeight: 600 }}>↓ {under} недовес</span>
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#ef4444", fontWeight: 600 }}>↑ {over} перевес</span>
+                  <div style={{ display: "flex", gap: 5, marginBottom: 12, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "rgba(34,197,94,0.12)", color: "#22c55e", fontWeight: 600 }}>✓ {ok} норма</span>
+                    <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "rgba(59,130,246,0.12)", color: "#3b82f6", fontWeight: 600 }}>↓ {under} докупить</span>
+                    <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#ef4444", fontWeight: 600 }}>↑ {over} перевес</span>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", maxHeight: 340 }}>
-                    {rows.map((t) => {
-                      const isOver = t.dev > 1.5;
-                      const isUnder = t.dev < -1.5;
-                      const barColor = isOver ? "#ef4444" : isUnder ? "#3b82f6" : "#22c55e";
-                      const action = isOver ? "СОКРАТИТЬ" : isUnder ? "ДОКУПИТЬ" : "ДЕРЖАТЬ";
-                      const actionColor = isOver ? "#ef4444" : isUnder ? "#3b82f6" : "#22c55e";
-                      const fillPct = Math.min(100, (t.liveShare / maxScale) * 100);
-                      const targetPct = Math.min(100, (t.target / maxScale) * 100);
-
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", maxHeight: 400 }}>
+                    {rows.map(r => {
+                      const barColor  = r.isOver ? "#ef4444" : r.isUnder ? r.color : "#22c55e";
+                      const gapColor  = r.isOver ? "#ef4444" : r.isUnder ? "#3b82f6" : "#22c55e";
+                      const gapLabel  = r.isOver
+                        ? `▼ продать $${Math.abs(r.gapUsd).toLocaleString()}`
+                        : r.isUnder
+                          ? `+ $${r.gapUsd.toLocaleString()}`
+                          : "✓";
                       return (
-                        <div key={t.id} style={{ padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: 8, border: `1px solid var(--border)` }}>
-                          {/* Top row */}
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <div style={{ width: 8, height: 8, borderRadius: "50%", background: t.color, flexShrink: 0 }} />
-                              <span style={{ fontSize: 12, fontWeight: 700 }}>{t.ticker}</span>
-                              <span style={{
-                                fontSize: 9, fontWeight: 600, padding: "1px 5px", borderRadius: 3,
-                                background: isOver ? "rgba(239,68,68,0.12)" : isUnder ? "rgba(59,130,246,0.12)" : "rgba(34,197,94,0.12)",
-                                color: barColor,
-                              }}>
-                                {isOver ? "ПЕРЕВЕС" : isUnder ? "НЕДОВЕС" : "НОРМА"}
-                              </span>
+                        <div key={r.id}>
+                          {/* Header row: ticker + gap */}
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                              <div style={{ width: 6, height: 6, borderRadius: "50%", background: r.color, flexShrink: 0 }} />
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>{r.ticker}</span>
+                              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{r.name.length > 16 ? r.name.slice(0, 16) + "…" : r.name}</span>
                             </div>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: actionColor }}>{action}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: gapColor }}>{gapLabel}</span>
                           </div>
 
-                          {/* Bar with target marker */}
-                          <div style={{ position: "relative", height: 8, background: "var(--border)", borderRadius: 4, overflow: "visible", marginBottom: 4 }}>
-                            {/* Current fill */}
+                          {/* Progress bar: full width = target, filled = current */}
+                          <div style={{ position: "relative", height: 10, background: "var(--bg-secondary)", borderRadius: 5, overflow: "hidden" }}>
+                            {/* Filled: already bought */}
                             <div style={{
-                              position: "absolute", left: 0, top: 0, height: "100%",
-                              width: `${fillPct}%`,
+                              position: "absolute", left: 0, top: 0, bottom: 0,
+                              width: `${r.fillPct}%`,
                               background: barColor,
-                              borderRadius: 4,
+                              opacity: r.isOver ? 0.9 : 0.75,
+                              borderRadius: 5,
                               transition: "width 0.5s ease",
-                              opacity: 0.85,
                             }} />
-                            {/* Target marker line */}
-                            <div style={{
-                              position: "absolute", top: -3, bottom: -3,
-                              left: `${targetPct}%`,
-                              width: 2,
-                              background: "#f59e0b",
-                              borderRadius: 1,
-                              zIndex: 2,
-                            }} />
+                            {/* Overweight overflow marker */}
+                            {r.isOver && (
+                              <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 3, background: "#ef4444", borderRadius: "0 5px 5px 0" }} />
+                            )}
                           </div>
 
-                          {/* Bottom numbers */}
-                          {(() => {
-                            const diffUsd = Math.round(((t.target - t.liveShare) / 100) * portfolioTotal);
-                            const needBuy = diffUsd > 0;
-                            const diffColor = needBuy ? "#3b82f6" : t.dev === 0 ? "#22c55e" : "#ef4444";
-                            return (
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                <div style={{ display: "flex", gap: 10, fontSize: 10 }}>
-                                  <span style={{ color: "var(--text-secondary)" }}>
-                                    Факт: <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{t.liveShare.toFixed(2)}%</span>
-                                  </span>
-                                  <span style={{ color: "var(--text-secondary)" }}>
-                                    Цель: <span style={{ color: "#f59e0b", fontWeight: 600 }}>{t.target.toFixed(2)}%</span>
-                                  </span>
-                                </div>
-                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                                  <span style={{ fontSize: 10, fontWeight: 700, color: t.dev >= 0 ? "#22c55e" : "#ef4444" }}>
-                                    {t.dev >= 0 ? "+" : ""}{t.dev.toFixed(2)}pp
-                                  </span>
-                                  {diffUsd !== 0 && (
-                                    <span style={{ fontSize: 9, fontWeight: 600, color: diffColor }}>
-                                      {needBuy ? "▲ докупить" : "▼ продать"} ${Math.abs(diffUsd).toLocaleString("en-US")}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })()}
+                          {/* Sub-labels: current% / target% */}
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+                            <span style={{ fontSize: 9, color: "var(--text-muted)" }}>куплено {r.current.toFixed(1)}%</span>
+                            <span style={{ fontSize: 9, color: "var(--text-muted)" }}>цель {r.target.toFixed(1)}%</span>
+                          </div>
                         </div>
                       );
                     })}
@@ -1170,7 +1161,7 @@ export default function PortfolioPage() {
         {/* Row 3: Buy ladder + Triggers + Snapshots */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
           {(() => {
-            const allTickers = positions.filter(p => p.type !== "Кэш");
+            const allTickers = positions.filter(p => p.type !== "Кэш" && p.value >= 10);
             const selectedPositions = allTickers.filter(p => ladderTickers.includes(p.ticker));
             const levels = Array.from({ length: ladderLevels }, (_, i) => (i + 1) * ladderStep);
 
@@ -1196,6 +1187,15 @@ export default function PortfolioPage() {
                         <input type="number" min={1} max={8} value={ladderLevels} onChange={e => setLadderLevels(Number(e.target.value))}
                           style={{ width: 52, padding: "3px 6px", borderRadius: 5, border: "1px solid var(--border)", background: "var(--bg-card)", color: "var(--text-primary)", fontSize: 12 }} />
                       </label>
+                      <button
+                        onClick={() => {
+                          try { localStorage.setItem("ladder-step", String(ladderStep)); localStorage.setItem("ladder-levels", String(ladderLevels)); } catch {}
+                          setLadderSaved(true);
+                          setTimeout(() => setLadderSaved(false), 2000);
+                        }}
+                        style={{ padding: "4px 12px", borderRadius: 6, border: "none", background: ladderSaved ? "#22c55e" : "var(--accent)", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer", transition: "background 0.2s" }}>
+                        {ladderSaved ? "✓ Сохранено" : "Сохранить"}
+                      </button>
                     </div>
                     <div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 5 }}>Инструменты:</div>
@@ -1602,7 +1602,7 @@ export default function PortfolioPage() {
           {(() => {
             const typeColors2: Record<string, string> = { ETF: "#7c3aed", Акция: "#3b82f6", Крипто: "#f59e0b", Сырьё: "#22c55e", Кэш: "#94a3b8", Облигация: "#06b6d4" };
             const groups2: Record<string, { value: number; color: string }> = {};
-            positions.forEach((p) => {
+            positions.filter(p => p.value >= 10).forEach((p) => {
               const val = p.qty * p.currentPrice;
               if (!groups2[p.type]) groups2[p.type] = { value: 0, color: typeColors2[p.type] ?? "#9d6ef5" };
               groups2[p.type].value += val;

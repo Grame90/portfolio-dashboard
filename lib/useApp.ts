@@ -2,6 +2,7 @@ import { useAuthStore } from "./store/useAuthStore";
 import { usePortfolioStore } from "./store/usePortfolioStore";
 import { useSettingsStore } from "./store/useSettingsStore";
 import { useQuotesStore } from "./store/useQuotesStore";
+import { loadDayBaseline } from "./tradingDay";
 
 export function useApp() {
   const auth = useAuthStore();
@@ -13,9 +14,11 @@ export function useApp() {
   const totalCost = portfolio.positions.reduce((s, p) => s + p.qty * p.avgPrice, 0);
   const totalPnl = portfolioTotal - totalCost;
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-  // Daily change should rely on valid market "current vs previous close" deltas.
-  // If previousClose looks invalid/anomalous, treat daily delta for that position as 0.
-  const dailyChange = portfolio.positions.reduce((sum, p) => {
+  // Daily change: prefer Istanbul 06:00 baseline (saved by DashboardProvider on day start).
+  // Falls back to market previousClose deltas if no baseline is recorded yet.
+  const istanbulBaseline = typeof window !== "undefined" ? loadDayBaseline() : null;
+
+  const marketDailyChange = portfolio.positions.reduce((sum, p) => {
     const q = quotes.liveQuotes[p.ticker];
     if (!q) return sum;
     const current = Number(q.current);
@@ -25,7 +28,9 @@ export function useApp() {
     if (rel > 0.5) return sum; // guard against broken feed spikes (>50% day move)
     return sum + p.qty * (current - previousClose);
   }, 0);
-  const prevTotal = portfolioTotal - dailyChange;
+
+  const prevTotal = istanbulBaseline ?? (portfolioTotal - marketDailyChange);
+  const dailyChange = portfolioTotal - prevTotal;
   const dailyChangePct = prevTotal > 0 ? (dailyChange / prevTotal) * 100 : 0;
 
   const computedPositions = portfolio.positions.map(p => {

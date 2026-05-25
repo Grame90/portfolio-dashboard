@@ -227,7 +227,7 @@ export default function TabAnalytics() {
   }, [mergedTimeline, period]);
 
   useEffect(() => {
-    const posTickers = app.positions.filter(p => p.type !== "Кэш" && p.type !== "Крипто").map(p => p.ticker);
+    const posTickers = app.positions.filter(p => p.type !== "Кэш").map(p => p.ticker);
     const allTickers = [...new Set([...posTickers, "SPY", "QQQ", "GLD"])];
     setHistLoading(true);
     fetch(`/api/historical?tickers=${allTickers.join(",")}&days=365`)

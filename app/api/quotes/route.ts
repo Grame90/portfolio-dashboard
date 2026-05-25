@@ -13,15 +13,15 @@ type Quote = {
 };
 
 function toYahooTicker(ticker: string): string {
-  return ticker.replace(/\./g, "-");
+  return ticker.replace(/\.([A-Z])$/, "-$1");
 }
 
 async function fetchFinnhubQuote(ticker: string): Promise<Quote | null> {
   if (!FINNHUB_KEY) return null;
 
   const res = await fetch(
-    `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${FINNHUB_KEY}`,
-    { cache: "no-store" },
+    `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}`,
+    { cache: "no-store", headers: { "X-Finnhub-Token": FINNHUB_KEY } },
   );
   if (!res.ok) return null;
 
@@ -75,12 +75,17 @@ async function fetchYahooQuote(ticker: string): Promise<Quote | null> {
   };
 }
 
+const TICKER_RE = /^[A-Z0-9.\-^=]{1,14}$/;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const tickersParam = searchParams.get("tickers");
   if (!tickersParam) return NextResponse.json({ error: "tickers param required" }, { status: 400 });
 
-  const tickers = tickersParam.split(",").filter(t => t && !SKIP.has(t));
+  const tickers = tickersParam
+    .split(",")
+    .filter(t => t && !SKIP.has(t) && TICKER_RE.test(t))
+    .slice(0, 50);
   if (!tickers.length) return NextResponse.json({});
 
   const results = await Promise.allSettled(

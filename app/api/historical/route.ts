@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Yahoo Finance ticker mapping — dots become hyphens
+// Yahoo Finance ticker mapping.
+// Share-class dots (BRK.B → BRK-B) become hyphens;
+// exchange suffixes (.ME, .L, .PA, etc.) are preserved.
 function toYahoo(ticker: string): string {
-  return ticker.replace(/\./g, "-");
+  return ticker.replace(/\.([A-Z])$/, "-$1");
 }
 
-async function fetchYahoo(
-  ticker: string,
+// Plain symbols without dots/dashes may be crypto — try appending -USD as fallback.
+const PLAIN_SYMBOL = /^[A-Z0-9]{2,10}$/;
+
+async function fetchYahooSymbol(
+  symbol: string,
   days: number,
 ): Promise<{ dates: string[]; closes: number[]; returns: number[] } | null> {
   const range = days > 365 ? "2y" : "1y";
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${toYahoo(ticker)}?range=${range}&interval=1d`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=1d`;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; portfolio-dashboard/1.0)" },
@@ -39,6 +44,19 @@ async function fetchYahoo(
   } catch {
     return null;
   }
+}
+
+async function fetchYahoo(
+  ticker: string,
+  days: number,
+): Promise<{ dates: string[]; closes: number[]; returns: number[] } | null> {
+  const result = await fetchYahooSymbol(toYahoo(ticker), days);
+  if (result) return result;
+  // For plain crypto-like symbols (BTC, ETH, SOL…) try the -USD pair on Yahoo
+  if (PLAIN_SYMBOL.test(ticker)) {
+    return fetchYahooSymbol(`${ticker}-USD`, days);
+  }
+  return null;
 }
 
 // TwelveData fallback (used when Yahoo fails — e.g. unlisted tickers)
@@ -74,9 +92,15 @@ async function fetchTwelveData(
   }
 }
 
+const TICKER_RE = /^[A-Z0-9.\-^=]{1,14}$/;
+
 export async function GET(req: NextRequest) {
-  const tickers = (req.nextUrl.searchParams.get("tickers") ?? "").split(",").filter(Boolean);
-  const days    = parseInt(req.nextUrl.searchParams.get("days") ?? "500");
+  const tickers = (req.nextUrl.searchParams.get("tickers") ?? "")
+    .split(",")
+    .filter(t => t && TICKER_RE.test(t))
+    .slice(0, 50);
+  const rawDays = parseInt(req.nextUrl.searchParams.get("days") ?? "500");
+  const days    = Number.isFinite(rawDays) ? Math.min(Math.max(rawDays, 1), 1000) : 500;
   if (!tickers.length) return NextResponse.json({});
 
   const results = await Promise.allSettled(

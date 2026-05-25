@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const tickersParam = req.nextUrl.searchParams.get("tickers") ?? "";
   if (!tickersParam) return NextResponse.json({});
 
-  const tickers = tickersParam.split(",").filter(Boolean);
+  const tickers = tickersParam.split(",").filter(Boolean).slice(0, 50);
   const idMap: Record<string, string> = {}; // coingecko_id → ticker
 
   const ids: string[] = [];
@@ -51,9 +51,8 @@ export async function GET(req: NextRequest) {
       if (!ticker) continue;
       const current = val.usd ?? 0;
       const changePct = val.usd_24h_change ?? 0;
-      // derive previousClose from 24h change
       const previousClose = changePct !== 0 ? current / (1 + changePct / 100) : current;
-      result[ticker] = { current, previousClose: Math.round(previousClose * 100) / 100 };
+      result[ticker] = { current, previousClose: parseFloat(previousClose.toPrecision(6)) };
     }
 
     return NextResponse.json(result);

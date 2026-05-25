@@ -15,7 +15,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export default function AnalyticsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("analytics");
+  const [activeTab, setActiveTab] = useState<Tab>("chart");
 
   return (
     <div style={{ minHeight: "100vh" }}>

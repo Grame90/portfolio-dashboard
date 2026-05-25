@@ -118,10 +118,10 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, [stockData, cryptoData, stockErr, cryptoErr, stockLd, cryptoLd, stockTickers, cryptoTickers, setQuotes, setQuoteStatus]);
 
   useEffect(() => {
-    // 300ms interval. Simulated price is clamped to ±0.10% of the last
+    // 300ms interval. Simulated price is clamped to ±0.01% of the last
     // real SWR price (realQuotes) so drift is always bounded.
     const INTERVAL = 300;
-    const MAX_DRIFT = 0.001; // 0.10%
+    const MAX_DRIFT = 0.0001; // 0.01%
     const id = setInterval(() => {
       const { quoteStatus } = useQuotesStore.getState();
       if (quoteStatus !== "ok" || !isMarketHoursNow()) return;
@@ -132,7 +132,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
           const q = next[ticker];
           const anchor = state.realQuotes[ticker]?.current ?? q.current;
           if (!q.current || !anchor) continue;
-          const delta = q.current * (Math.random() * 0.003 - 0.0015);
+          const delta = q.current * (Math.random() * 0.0002 - 0.0001);
           const raw = q.current + delta;
           const lo = anchor * (1 - MAX_DRIFT);
           const hi = anchor * (1 + MAX_DRIFT);

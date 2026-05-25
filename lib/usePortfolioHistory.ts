@@ -17,7 +17,7 @@ export function usePortfolioHistory(
 
   useEffect(() => {
     const tickers = positions
-      .filter(p => p.type !== "Кэш" && p.type !== "Крипто")
+      .filter(p => p.type !== "Кэш")
       .map(p => p.ticker);
     if (!tickers.length) { setHistLoaded(true); return; }
     setHistLoaded(false);

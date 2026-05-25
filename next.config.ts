@@ -15,11 +15,11 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.coingecko.com https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://api.twelvedata.com https://finnhub.io https://api.bybit.com",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.coingecko.com https://query1.finance.yahoo.com https://query2.finance.yahoo.com https://api.twelvedata.com https://finnhub.io https://api.bybit.com https://va.vercel-scripts.com",
               "frame-src 'none'",
               "object-src 'none'",
               "base-uri 'self'",

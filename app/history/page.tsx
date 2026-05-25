@@ -72,19 +72,22 @@ export default function HistoryPage() {
     return () => window.removeEventListener("portfolio-snapshot", handler);
   }, [loadSnapshots]);
 
+  // Stable ticker key — useApp returns a fresh positions array every render (quote
+  // ticks fire every 300ms), so depending on the array reference re-fires the
+  // fetch dozens of times. Reduce to a sorted string keyed on the ticker set only.
+  const calendarTickerKey = useMemo(
+    () => realPositions.filter(p => p.type !== "Кэш").map(p => p.ticker).sort().join(","),
+    [realPositions]
+  );
+
   // Fetch real economic calendar (Finnhub macro + FMP earnings/dividends for portfolio)
   useEffect(() => {
     let cancelled = false;
     const CACHE_KEY = "calendar-cache-v2";
     const CACHE_TTL = 3600_000; // 1 hour
+    const tickers = calendarTickerKey;
 
     async function fetchCalendar() {
-      const tickers = realPositions
-        .filter(p => p.type !== "Кэш")
-        .map(p => p.ticker)
-        .join(",");
-
-      // Use cached version if still fresh and tickers haven't changed
       try {
         const cached = localStorage.getItem(CACHE_KEY);
         if (cached) {
@@ -112,11 +115,9 @@ export default function HistoryPage() {
       }
     }
 
-    if (realPositions.length > 0 || realPositions.length === 0) {
-      fetchCalendar();
-    }
+    fetchCalendar();
     return () => { cancelled = true; };
-  }, [realPositions]);
+  }, [calendarTickerKey]);
 
   // Load localStorage portfolio-chart-history + fetch Finnhub candles
   useEffect(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useApp } from "@/lib/useApp";
 
 type AlertLevel = "green" | "yellow" | "red";
@@ -253,20 +253,69 @@ export default function DailyAlert() {
 // Shows a small colored pill inline with the page title.
 // Clicking it opens a popover with the full alert details.
 
+interface Indicator {
+  id: string;
+  label: string;
+  value: string;
+  level: AlertLevel;
+  note: string;
+}
+
 export function DailyAlertBadge() {
   const app = useApp();
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  // Delay close so the cursor can cross the small gap between badge and popover
+  // without the popover snapping shut mid-traversal.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function scheduleClose() {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpen(false), 150);
+  }
+  function cancelClose() {
+    if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; }
+  }
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
 
   useEffect(() => { setMounted(true); }, []);
 
-  const { level, alerts, recommendations, summary } = useMemo(() => {
+  // Live ticker for countdown to next planned check. Only runs while popover is
+  // open to avoid useless re-renders.
+  const [nowTs, setNowTs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!open) return;
+    setNowTs(Date.now());
+    const id = setInterval(() => setNowTs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [open]);
+
+  // Next planned monitoring = next 03:00 Istanbul = next 00:00 UTC (Turkey is
+  // fixed UTC+3, no DST). This matches the daily auto-snapshot schedule.
+  const countdownText = useMemo(() => {
+    const next = new Date(nowTs);
+    next.setUTCHours(0, 0, 0, 0);
+    if (next.getTime() <= nowTs) next.setUTCDate(next.getUTCDate() + 1);
+    const ms = next.getTime() - nowTs;
+    if (ms <= 0) return "скоро";
+    const h = Math.floor(ms / 3_600_000);
+    const m = Math.floor((ms % 3_600_000) / 60_000);
+    if (h >= 1) return `${h} ч ${m} мин`;
+    return `${m} мин`;
+  }, [nowTs]);
+
+  const { level, indicators, alertCount, recommendations, summary } = useMemo(() => {
     const total = app.portfolioTotal;
     const positions = app.positions;
     const liveQuotes = app.liveQuotes;
 
     if (!total || !positions.length) {
-      return { level: "green" as AlertLevel, alerts: [] as AlertItem[], recommendations: [] as { text: string }[], summary: "Нет данных" };
+      return {
+        level: "green" as AlertLevel,
+        indicators: [] as Indicator[],
+        alertCount: 0,
+        recommendations: [] as { text: string }[],
+        summary: "Нет данных",
+      };
     }
 
     const dailyPct = app.dailyChangePct;
@@ -292,23 +341,104 @@ export function DailyAlertBadge() {
       return q ? q.current < (q.previousClose ?? q.current) : false;
     }).length;
 
-    const collected: AlertItem[] = [];
-    if (dailyPct <= -4)   collected.push({ icon: "🔴", text: `Резкое дневное падение: ${dailyPct.toFixed(2)}%`, level: "red" });
-    else if (dailyPct <= -2) collected.push({ icon: "🟡", text: `Дневное снижение: ${dailyPct.toFixed(2)}%`, level: "yellow" });
-    else if (dailyPct >= 3)  collected.push({ icon: "🟢", text: `Сильный рост: +${dailyPct.toFixed(2)}%`, level: "green" });
-    if (totalPnlPct <= -20) collected.push({ icon: "🔴", text: `Просадка ${totalPnlPct.toFixed(1)}% — критическая`, level: "red" });
-    else if (totalPnlPct <= -10) collected.push({ icon: "🟡", text: `Просадка ${totalPnlPct.toFixed(1)}%`, level: "yellow" });
-    if (top3pct >= 80) collected.push({ icon: "🔴", text: `Концентрация топ-3: ${top3pct.toFixed(1)}%`, level: "red" });
-    else if (top3pct >= 65) collected.push({ icon: "🟡", text: `Концентрация: ${top3pct.toFixed(1)}%`, level: "yellow" });
-    if (cashPct < 2) collected.push({ icon: "🔴", text: `Кэш: ${cashPct.toFixed(1)}% — опасно мало`, level: "red" });
-    else if (cashPct < 5) collected.push({ icon: "🟡", text: `Кэш: ${cashPct.toFixed(1)}% (рек. 5%+)`, level: "yellow" });
-    if (cryptoPct >= 50) collected.push({ icon: "🔴", text: `Крипто: ${cryptoPct.toFixed(1)}%`, level: "red" });
-    else if (cryptoPct >= 30) collected.push({ icon: "🟡", text: `Крипто: ${cryptoPct.toFixed(1)}%`, level: "yellow" });
-    if (redCount >= positions.length * 0.7 && redCount > 3)
-      collected.push({ icon: "🟡", text: `${redCount}/${positions.length} позиций в минусе`, level: "yellow" });
+    // Build the complete indicator list — every metric, always, with current state.
+    const ind: Indicator[] = [];
 
-    const overallLevel: AlertLevel = collected.reduce<AlertLevel>((max, a) =>
-      LEVEL_ORDER[a.level] > LEVEL_ORDER[max] ? a.level : max, "green");
+    // 1. Daily change
+    {
+      let lv: AlertLevel = "green";
+      let note = "норма (>−2%)";
+      if (dailyPct <= -4) { lv = "red"; note = "крит. падение (≤−4%)"; }
+      else if (dailyPct <= -2) { lv = "yellow"; note = "снижение (≤−2%)"; }
+      else if (dailyPct >= 3) { lv = "green"; note = "сильный рост"; }
+      ind.push({
+        id: "daily",
+        label: "Дневное изменение",
+        value: `${dailyPct >= 0 ? "+" : ""}${dailyPct.toFixed(2)}%`,
+        level: lv,
+        note,
+      });
+    }
+
+    // 2. Total P&L
+    {
+      let lv: AlertLevel = "green";
+      let note = "норма (>−10%)";
+      if (totalPnlPct <= -20) { lv = "red"; note = "крит. просадка (≤−20%)"; }
+      else if (totalPnlPct <= -10) { lv = "yellow"; note = "просадка (≤−10%)"; }
+      ind.push({
+        id: "totalPnl",
+        label: "Общий P&L",
+        value: `${totalPnlPct >= 0 ? "+" : ""}${totalPnlPct.toFixed(1)}%`,
+        level: lv,
+        note,
+      });
+    }
+
+    // 3. Concentration of top-3 positions
+    {
+      let lv: AlertLevel = "green";
+      let note = "норма (<65%)";
+      if (top3pct >= 80) { lv = "red"; note = "крит. (≥80%)"; }
+      else if (top3pct >= 65) { lv = "yellow"; note = "выше нормы (≥65%)"; }
+      ind.push({
+        id: "concentration",
+        label: "Концентрация топ-3",
+        value: `${top3pct.toFixed(1)}%`,
+        level: lv,
+        note,
+      });
+    }
+
+    // 4. Cash buffer
+    {
+      let lv: AlertLevel = "green";
+      let note = "норма (≥5%)";
+      if (cashPct < 2) { lv = "red"; note = "опасно мало (<2%)"; }
+      else if (cashPct < 5) { lv = "yellow"; note = "ниже нормы (<5%)"; }
+      ind.push({
+        id: "cash",
+        label: "Кэш-буфер",
+        value: `${cashPct.toFixed(1)}%`,
+        level: lv,
+        note,
+      });
+    }
+
+    // 5. Crypto exposure
+    {
+      let lv: AlertLevel = "green";
+      let note = "норма (<30%)";
+      if (cryptoPct >= 50) { lv = "red"; note = "крит. (≥50%)"; }
+      else if (cryptoPct >= 30) { lv = "yellow"; note = "повышенная (≥30%)"; }
+      ind.push({
+        id: "crypto",
+        label: "Доля крипто",
+        value: `${cryptoPct.toFixed(1)}%`,
+        level: lv,
+        note,
+      });
+    }
+
+    // 6. Red positions today
+    {
+      const ratio = positions.length > 0 ? redCount / positions.length : 0;
+      let lv: AlertLevel = "green";
+      let note = "норма";
+      if (ratio >= 0.7 && redCount > 3) { lv = "yellow"; note = "≥70% в минусе"; }
+      ind.push({
+        id: "redPositions",
+        label: "Позиции в минусе",
+        value: `${redCount} / ${positions.length}`,
+        level: lv,
+        note,
+      });
+    }
+
+    const overallLevel: AlertLevel = ind.reduce<AlertLevel>((max, i) =>
+      LEVEL_ORDER[i.level] > LEVEL_ORDER[max] ? i.level : max, "green");
+
+    const alertCount = ind.filter(i => i.level !== "green").length;
 
     const recs: { text: string }[] = [];
     if (overallLevel === "red") {
@@ -326,7 +456,7 @@ export function DailyAlertBadge() {
       overallLevel === "red" ? "Повышенный риск" :
       overallLevel === "yellow" ? "Умеренный риск" : "Стабильно";
 
-    return { level: overallLevel, alerts: collected, recommendations: recs, summary };
+    return { level: overallLevel, indicators: ind, alertCount, recommendations: recs, summary };
   }, [app.portfolioTotal, app.positions, app.liveQuotes, app.dailyChangePct, app.totalPnlPct]);
 
   if (!mounted) return null;
@@ -339,9 +469,19 @@ export function DailyAlertBadge() {
   const c = colors[level];
   const today = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 
+  const indicatorDot: Record<AlertLevel, string> = {
+    green: "#22c55e",
+    yellow: "#f59e0b",
+    red: "#ef4444",
+  };
+
   return (
-    <div style={{ position: "relative", display: "inline-block" }}>
-      {/* Badge pill */}
+    <div
+      style={{ position: "relative", display: "inline-block" }}
+      onMouseEnter={() => { cancelClose(); setOpen(true); }}
+      onMouseLeave={scheduleClose}
+    >
+      {/* Badge pill — click toggles on touch devices that have no hover */}
       <button
         onClick={() => setOpen(o => !o)}
         style={{
@@ -361,73 +501,98 @@ export function DailyAlertBadge() {
         <span style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
           {today}
         </span>
-        {alerts.length > 0 && (
+        {alertCount > 0 && (
           <span style={{
             fontSize: 9, fontWeight: 700, background: c.dot, color: "white",
             borderRadius: "50%", width: 15, height: 15,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            {alerts.length}
+            {alertCount}
           </span>
         )}
       </button>
 
-      {/* Popover */}
+      {/* Popover — opens on hover, stays open while cursor is over badge or popover */}
       {open && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 199 }}
-            onClick={() => setOpen(false)}
-          />
-          <div style={{
-            position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 200,
-            background: "var(--bg-card)", border: `1px solid ${c.border}`,
-            borderRadius: 12, padding: 16, minWidth: 320, maxWidth: 400,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-            animation: "fadeIn 0.15s ease",
-          }}>
-            {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, fontWeight: 800, color: c.dot, letterSpacing: "0.07em" }}>
-                КРИЗИС-АЛЕРТ
-              </span>
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
-                background: c.dot, color: "white", marginLeft: "auto",
-              }}>
-                {c.label.toUpperCase()}
-              </span>
-            </div>
+        <div style={{
+          position: "absolute", top: "100%", left: 0, marginTop: 8, zIndex: 200,
+          background: "var(--bg-card)", border: `1px solid ${c.border}`,
+          borderRadius: 12, padding: 14, minWidth: 320, maxWidth: 420,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          animation: "fadeIn 0.15s ease",
+        }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: c.dot, flexShrink: 0 }} />
+            <span style={{ fontSize: 11, fontWeight: 800, color: c.dot, letterSpacing: "0.07em" }}>
+              КРИЗИС-АЛЕРТ
+            </span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
+              background: c.dot, color: "white", marginLeft: "auto",
+            }}>
+              {c.label.toUpperCase()}
+            </span>
+          </div>
 
-            <div style={{ fontSize: 12, fontWeight: 600, color: c.dot, marginBottom: 10 }}>{summary}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: c.dot, marginBottom: 10 }}>{summary}</div>
 
-            {/* Alerts */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 10 }}>
-              {alerts.length === 0 ? (
-                <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>✅ Все триггеры в норме</div>
-              ) : alerts.map((a, i) => (
-                <div key={i} style={{ display: "flex", gap: 7, fontSize: 12, color: "var(--text-secondary)" }}>
-                  <span style={{ flexShrink: 0 }}>{a.icon}</span>
-                  <span>{a.text}</span>
+          {/* All indicators with current state */}
+          {indicators.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>Нет данных по портфелю</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+              {indicators.map(ind => (
+                <div key={ind.id} style={{
+                  display: "grid", gridTemplateColumns: "10px 1fr auto",
+                  gap: 8, alignItems: "center", fontSize: 12,
+                }}>
+                  <span style={{
+                    width: 8, height: 8, borderRadius: "50%",
+                    background: indicatorDot[ind.level], flexShrink: 0,
+                  }} />
+                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                    <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{ind.label}</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: 10 }}>{ind.note}</span>
+                  </div>
+                  <span style={{
+                    fontVariantNumeric: "tabular-nums", fontWeight: 700,
+                    color: indicatorDot[ind.level], whiteSpace: "nowrap",
+                  }}>
+                    {ind.value}
+                  </span>
                 </div>
               ))}
             </div>
+          )}
 
-            <div style={{ height: 1, background: c.border, marginBottom: 10 }} />
+          <div style={{ height: 1, background: c.border, marginBottom: 10 }} />
 
-            {/* Recommendations */}
-            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-              Рекомендации
-            </div>
-            {recommendations.map((r, i) => (
-              <div key={i} style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 6, marginBottom: 4 }}>
-                <span style={{ color: c.dot, flexShrink: 0 }}>→</span>
-                <span>{r.text}</span>
-              </div>
-            ))}
+          {/* Recommendations */}
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
+            Рекомендации
           </div>
-        </>
+          {recommendations.map((r, i) => (
+            <div key={i} style={{ fontSize: 12, color: "var(--text-secondary)", display: "flex", gap: 6, marginBottom: 4 }}>
+              <span style={{ color: c.dot, flexShrink: 0 }}>→</span>
+              <span>{r.text}</span>
+            </div>
+          ))}
+
+          {/* Countdown to next planned monitoring */}
+          <div style={{
+            marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${c.border}`,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            fontSize: 11,
+          }}>
+            <span style={{ color: "var(--text-muted)" }}>Плановый мониторинг будет через</span>
+            <span style={{
+              color: c.dot, fontWeight: 700, fontVariantNumeric: "tabular-nums",
+            }}>
+              {countdownText}
+            </span>
+          </div>
+        </div>
       )}
     </div>
   );

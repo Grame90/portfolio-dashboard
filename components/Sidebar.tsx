@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Eye, List, BarChart2, History,
-  AlertTriangle, Zap, Target, Settings, TrendingUp,
+  Zap, Target, Settings, TrendingUp,
   Palette, FileText, MoreHorizontal, X, ScanLine,
 } from "lucide-react";
 import { useMobile } from "@/lib/useMobile";
@@ -18,11 +18,9 @@ const navItems = [
   { href: "/overview",   icon: Eye,             label: "Обзор" },
   { href: "/positions",  icon: List,            label: "Позиции" },
   { href: "/scan",       icon: ScanLine,        label: "Скан" },
-  { href: "/chart",      icon: TrendingUp,      label: "Графики" },
   { href: "/analytics",  icon: BarChart2,       label: "Аналитика" },
   { href: "/history",    icon: History,         label: "История" },
   { href: "/import",     icon: FileText,        label: "Импорт" },
-  { href: "/risks",      icon: AlertTriangle,   label: "Риски" },
   { href: "/triggers",   icon: Zap,             label: "Триггеры" },
   { href: "/actions",    icon: Target,          label: "Действия" },
   { href: "/strategy",   icon: TrendingUp,      label: "Стратегия" },

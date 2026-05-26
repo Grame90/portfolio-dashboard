@@ -9,6 +9,45 @@ export const BACKUP_KEYS = [
   "target-structure",
 ] as const;
 
+// All keys touched by the app. Used by the "Reset all data" button on /settings
+// to clear instruments, money, snapshots, imports, triggers, cached layouts —
+// the full user-data surface, not just the backup-worthy subset.
+export const RESET_ALL_KEYS = [
+  // Positions + their backup + sync metadata
+  "positions-data",
+  "positions-data-backup",
+  "positions-data-updated-at",
+  // Dashboard settings + notifications
+  "dashboard-settings",
+  "dashboard-notifications",
+  // History, snapshots, dividends, targets
+  "portfolio-chart-history",
+  "snapshots-data",
+  "dividends-received",
+  "target-structure",
+  // /report standalone data (separate from auto-snapshots)
+  "report-snapshots",
+  "report-imported-rows-v1",
+  // /triggers, /actions
+  "triggers-data",
+  "operations-log",
+  // /portfolio UI prefs
+  "portfolio-cols",
+  "portfolio-col-order",
+  "ladder-levels",
+  "ladder-step",
+  // /analytics chart profiles
+  "chart-grid-profiles",
+  // Market ticker cache
+  "mt-price-cache",
+  // Trading-day baseline + dedup flags
+  "portfolio-istanbul-day-baseline",
+  "auto-snapshot-date",
+  // Cached external data + UI dismissals
+  "calendar-cache-v2",
+  "daily-alert-dismissed",
+] as const;
+
 type BackupPayload = Record<string, unknown>;
 
 function unwrapPositions(value: unknown): StoredPosition[] {

@@ -5,7 +5,9 @@ import PageHeader from "@/components/PageHeader";
 import { connections } from "@/lib/mockData";
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
-import { BACKUP_KEYS, importBackupPayload } from "@/lib/portfolioBackup";
+import { BACKUP_KEYS, RESET_ALL_KEYS, importBackupPayload } from "@/lib/portfolioBackup";
+import { usePortfolioStore } from "@/lib/store/usePortfolioStore";
+import { createClient } from "@/lib/supabase/client";
 
 const settingsTabs = ["ПОДКЛЮЧЕНИЯ", "УВЕДОМЛЕНИЯ", "РИСК-ПРОФИЛЬ", "ПОРТФЕЛЬ", "ДАННЫЕ", "АККАУНТ"];
 
@@ -184,12 +186,30 @@ export default function SettingsPage() {
     e.target.value = "";
   }
 
-  function handleClearAll() {
-    if (!window.confirm("Удалить все данные портфеля? Это действие необратимо.")) return;
-    BACKUP_KEYS.forEach((key) => localStorage.removeItem(key));
-    app.refreshPositions();
-    setSaved("Данные удалены");
-    setTimeout(() => setSaved(null), 2500);
+  async function handleClearAll() {
+    if (!window.confirm("Удалить все данные? Это сотрёт позиции, кэш, снапшоты, импорт, настройки, цели и историю — везде, во всех вкладках. Действие необратимо.")) return;
+
+    // 1. Wipe every known key from localStorage
+    RESET_ALL_KEYS.forEach((key) => {
+      try { localStorage.removeItem(key); } catch {}
+    });
+
+    // 2. Reset in-memory zustand store so UI flips to empty immediately
+    usePortfolioStore.getState().clearPositions();
+
+    // 3. Wipe cloud row for the current user (so data doesn't re-download on
+    //    next load via DashboardProvider → loadFromCloud).
+    try {
+      if (app.user?.id) {
+        const supabase = createClient();
+        await supabase.from("user_data").delete().eq("user_id", app.user.id);
+      }
+    } catch {}
+
+    setSaved("Данные удалены — страница перезагрузится");
+    // Hard reload so every page-local state (chart histories, /report snapshots,
+    // settings caches) gets re-mounted from the now-empty storage.
+    setTimeout(() => { window.location.reload(); }, 800);
   }
 
   const statusColor = (s: string) => s === "Активен" ? "#22c55e" : "#ef4444";

@@ -296,20 +296,42 @@ export default function ReportPage() {
       setRates({ TRY: tryRate, EUR: eurRate, RUB: rubRate });
     } catch {}
 
+    // Fold imported file rows ("История из файла") into the snapshot. Rates are
+    // "1 USD = X foreign", so to convert foreign -> USD we divide by the rate.
+    // Unknown currencies fall back to 1:1 (treat as USD).
+    function toUsd(amount: number, currency: string): number {
+      const cur = (currency || "USD").toUpperCase();
+      if (cur === "USD" || !amount) return amount;
+      if (cur === "EUR") return eurRate > 0 ? amount / eurRate : amount;
+      if (cur === "TRY") return tryRate > 0 ? amount / tryRate : amount;
+      if (cur === "RUB") return rubRate > 0 ? amount / rubRate : amount;
+      return amount;
+    }
+
+    const importedInvested = importedRows.reduce((s, r) => s + toUsd(r.invested, r.currency), 0);
+    const importedMarketValue = importedRows.reduce((s, r) => s + toUsd(r.marketValue, r.currency), 0);
+    const importedPnl = importedRows.reduce((s, r) => s + toUsd(r.pnl, r.currency), 0);
+
     const btcPrice = app.liveQuotes["BTC"]?.current ?? 0;
-    const balanceUSD = app.portfolioTotal;
+    const liveBalance = app.portfolioTotal;
+    const balanceUSD = liveBalance + importedMarketValue;
     const balanceEUR = eurRate > 0 ? balanceUSD * eurRate : 0;
     const balanceTRY = tryRate > 0 ? balanceUSD * tryRate : 0;
     const balanceRUB = rubRate > 0 ? balanceUSD * rubRate : 0;
     const balanceBTC = btcPrice > 0 ? balanceUSD / btcPrice : 0;
-    const invested = app.totalCost;
-    const totalPnl = app.totalPnl;
-    const returnPct = app.totalPnlPct;
+    const invested = app.totalCost + importedInvested;
+    const totalPnl = app.totalPnl + importedPnl;
+    const returnPct = invested > 0 ? (totalPnl / invested) * 100 : 0;
+    // Daily P&L stays live-only: imported rows have no day-over-day delta.
     const dailyPnl = app.dailyChange;
 
     const existingRows = loadSnapshots();
     const daysSinceStart = existingRows.length;
     const benchmark10pct = invested > 0 ? invested * Math.pow(1 + 0.10, daysSinceStart / 365) - invested : 0;
+
+    const note = importedRows.length > 0
+      ? `Файл: ${importedRows.length} стр. (+$${fmt(importedMarketValue, 0)} рынок / +$${fmt(importedInvested, 0)} вложено)`
+      : "";
 
     const row: SnapshotRow = {
       id: Date.now().toString(),
@@ -317,7 +339,7 @@ export default function ReportPage() {
       tryRate, eurRate, rubRate, btcPrice,
       dailyPnl, totalPnl, balanceUSD, balanceEUR, balanceTRY, balanceRUB, balanceBTC,
       invested, returnPct, benchmark10pct,
-      note: "",
+      note,
     };
 
     const updated = [row, ...existingRows];

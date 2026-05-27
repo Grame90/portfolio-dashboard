@@ -1,19 +1,44 @@
 "use client";
 
-// Financial Diary — Sprint 2.
+// Financial Diary — clean rebuild.
 //
-// Tabs:
-//   1. Журнал — Excel-like table with dynamic brokers, sticky first column,
-//      column visibility menu, capital events panel, snapshot-now button.
-//   2. Настройки — strategy config editor + broker manager.
+// Three tabs: Журнал · Аналитика · Настройки.
 //
-// Storage: localStorage. Cloud sync lands in Sprint 5.
+// Behaviour:
+//   • Daily entries auto-populate from /positions. The latest row is "live"
+//     (refreshes every render + every minute via interval) — its balances
+//     mirror current positions and cannot be edited.
+//   • At midnight Istanbul, today rolls over: a new live row is created and
+//     yesterday becomes frozen. Frozen rows are editable (balances, transfers,
+//     comment, manual invested).
+//   • Storage schema v2: old data is wiped on first mount of this code via
+//     `migrateDiaryStorage()`.
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Settings as SettingsIcon, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import BrokerManagerModal from "@/components/diary/BrokerManagerModal";
-import ColumnVisibilityMenu from "@/components/diary/ColumnVisibilityMenu";
+import JournalView from "@/components/diary/JournalView";
+import AnalyticsView from "@/components/diary/AnalyticsView";
+import SettingsView from "@/components/diary/SettingsView";
+import ExcelView from "@/components/diary/ExcelView";
+import {
+  ensureTodayEntry,
+  isEntryLive,
+} from "@/lib/diary/auto-snapshot";
+import {
+  fetchHistoricalFxMap,
+  pickRatesForDate,
+  runBackfill,
+} from "@/lib/diary/backfill";
+import { fetchCurrentRates } from "@/lib/diary/fx";
+import { importDiaryCsv } from "@/lib/diary/import";
+import type { ImportDiagnostics } from "@/lib/diary/import";
+import {
+  isExcelFile,
+  isNumbersFile,
+  NUMBERS_EXPORT_INSTRUCTIONS,
+  xlsxFileToCsv,
+} from "@/lib/diary/excel";
 import {
   clearDiaryStorage,
   loadBrokers,
@@ -22,20 +47,13 @@ import {
   loadDiaryEntries,
   loadImportDiagnostics,
   loadStrategyConfig,
+  migrateDiaryStorage,
   saveBrokers,
   saveCapitalEvents,
   saveColumnVisibility,
   saveDiaryEntries,
-  saveImportDiagnostics,
   saveStrategyConfig,
-  upsertDiaryEntry,
 } from "@/lib/diary/storage";
-import { importDiaryCsv } from "@/lib/diary/import";
-import type { ImportDiagnostics } from "@/lib/diary/import";
-import { isExcelFile, isNumbersFile, NUMBERS_EXPORT_INSTRUCTIONS, xlsxFileToCsv } from "@/lib/diary/excel";
-import { computeEntryMetrics } from "@/lib/diary/compute";
-import { fetchCurrentRates } from "@/lib/diary/fx";
-import { buildSnapshotFromPositions } from "@/lib/diary/positions-snapshot";
 import {
   CAPITAL_EVENT_LABELS,
   DEFAULT_COLUMN_VISIBILITY,
@@ -52,41 +70,39 @@ import type {
 import { usePortfolioStore } from "@/lib/store/usePortfolioStore";
 import { useQuotesStore } from "@/lib/store/useQuotesStore";
 
-type Tab = "journal" | "settings";
+type Tab = "journal" | "analytics" | "excel" | "settings";
 
-function fmtUsd(n: number, digits = 0): string {
-  if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString("ru-RU", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: digits,
-    minimumFractionDigits: digits,
-  });
+// Re-check daily snapshot every minute. Cheap; keeps the live row fresh.
+const REFRESH_INTERVAL_MS = 60_000;
+
+// Shallow-compare two entry arrays for "material" changes that warrant a
+// localStorage write + re-render. We only check fields that the auto-snapshot
+// loop is allowed to mutate (date, balances, rates, isLive flag). Manual
+// edit fields (transfers/comment/manualInvested) are managed by separate
+// handlers so they never appear as "changed" here.
+function hasMaterialChange(prev: DiaryEntry[], next: DiaryEntry[]): boolean {
+  if (prev === next) return false;
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (a === b) continue;
+    if (a.date !== b.date) return true;
+    if ((a as { isLive?: boolean }).isLive !== (b as { isLive?: boolean }).isLive) return true;
+    if (!shallowRecordEqual(a.balances, b.balances)) return true;
+    if (!shallowRecordEqual(a.rates as Record<string, number | undefined>, b.rates as Record<string, number | undefined>)) return true;
+  }
+  return false;
 }
-
-function fmtPct(n: number, digits = 2): string {
-  if (!Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(digits)}%`;
-}
-
-function fmtNative(n: number, currency: string): string {
-  if (!n) return "—";
-  const symbol = currency === "USD"
-    ? "$"
-    : currency === "TRY"
-    ? "₺"
-    : currency === "RUB"
-    ? "₽"
-    : currency === "EUR"
-    ? "€"
-    : "";
-  return `${symbol}${n.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`;
-}
-
-function isColVisible(state: ColumnVisibilityState, id: string, defaultOn: boolean): boolean {
-  const v = state.visible[id];
-  return v === undefined ? defaultOn : v;
+function shallowRecordEqual(
+  a: Record<string, number | undefined>,
+  b: Record<string, number | undefined>,
+): boolean {
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) if (a[k] !== b[k]) return false;
+  return true;
 }
 
 export default function DiaryPage() {
@@ -95,18 +111,29 @@ export default function DiaryPage() {
   const [events, setEvents] = useState<CapitalEvent[]>([]);
   const [brokers, setBrokers] = useState<DiaryBroker[]>([]);
   const [cfg, setCfg] = useState<StrategyConfig>(DEFAULT_STRATEGY_CONFIG);
-  const [visibility, setVisibility] = useState<ColumnVisibilityState>(
-    DEFAULT_COLUMN_VISIBILITY,
-  );
+  const [visibility, setVisibility] = useState<ColumnVisibilityState>(DEFAULT_COLUMN_VISIBILITY);
   const [diag, setDiag] = useState<ImportDiagnostics | null>(null);
   const [brokerModalOpen, setBrokerModalOpen] = useState(false);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [refreshingFx, setRefreshingFx] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const positions = usePortfolioStore((s) => s.positions);
   const liveQuotes = useQuotesStore((s) => s.liveQuotes);
-
+  // Refs so the interval reads latest positions/quotes without re-arming
+  // on every quote tick (quotes update sub-second; without refs we'd refresh
+  // snapshot on every tick → hammering /api/rates + localStorage).
+  const positionsRef = useRef(positions);
+  const quotesRef = useRef(liveQuotes);
   useEffect(() => {
+    positionsRef.current = positions;
+    quotesRef.current = liveQuotes;
+  }, [positions, liveQuotes]);
+
+  // First-mount: migrate schema (wipe v1 keys), then load v2 state.
+  useEffect(() => {
+    migrateDiaryStorage();
     setEntries(loadDiaryEntries());
     setEvents(loadCapitalEvents());
     setBrokers(loadBrokers());
@@ -115,12 +142,96 @@ export default function DiaryPage() {
     setDiag(loadImportDiagnostics());
   }, []);
 
+  // Auto-fill missing historical FX once per session: if any entry has a
+  // non-USD broker balance but lacks the corresponding rate, fetch the
+  // historical rate from Yahoo so totals add up correctly when user edits
+  // cash amounts on frozen rows.
+  const fxAutofillDone = useRef(false);
+  useEffect(() => {
+    if (fxAutofillDone.current) return;
+    if (entries.length === 0 || brokers.length === 0) return;
+    fxAutofillDone.current = true;
+    const usedCcy = new Set(brokers.map((b) => b.currency));
+    const needs = (e: DiaryEntry) => {
+      const r = e.rates ?? {};
+      if (usedCcy.has("TRY") && !r.usdPerTry) return true;
+      if (usedCcy.has("RUB") && !r.usdPerRub) return true;
+      if (usedCcy.has("EUR") && !r.usdPerEur) return true;
+      return false;
+    };
+    if (!entries.some(needs)) return;
+    (async () => {
+      try {
+        const dates = entries.map((e) => e.date).sort();
+        const { ratesByDate } = await fetchHistoricalFxMap(
+          dates[0],
+          dates[dates.length - 1],
+          {
+            TRY: usedCcy.has("TRY"),
+            RUB: usedCcy.has("RUB"),
+            EUR: usedCcy.has("EUR"),
+            BTC: brokers.some((b) => b.isCrypto),
+          },
+        );
+        setEntries((prev) => {
+          const next = prev.map((e) => {
+            const r = pickRatesForDate(e.date, ratesByDate);
+            const merged = { ...(e.rates ?? {}), ...r };
+            if (JSON.stringify(merged) === JSON.stringify(e.rates ?? {})) return e;
+            return { ...e, rates: merged };
+          });
+          if (next === prev) return prev;
+          saveDiaryEntries(next);
+          return next;
+        });
+      } catch (err) {
+        console.warn("Auto FX fill failed:", err);
+        fxAutofillDone.current = false; // allow retry on next render cycle
+      }
+    })();
+  }, [entries, brokers]);
+
+  // Auto-snapshot: runs once on mount (and when brokers change) + every 60s.
+  // Uses refs so live quote ticks don't re-arm the interval.
+  // Skips localStorage writes when the next snapshot is value-equivalent.
+  useEffect(() => {
+    if (brokers.length === 0) return;
+    let cancelled = false;
+    const refresh = async () => {
+      let rates;
+      try {
+        rates = await fetchCurrentRates();
+      } catch {
+        rates = {};
+      }
+      if (cancelled) return;
+      setEntries((prev) => {
+        const next = ensureTodayEntry(
+          prev,
+          positionsRef.current,
+          quotesRef.current,
+          brokers,
+          rates,
+        );
+        if (!hasMaterialChange(prev, next)) return prev;
+        saveDiaryEntries(next);
+        return next;
+      });
+    };
+    refresh();
+    const id = window.setInterval(refresh, REFRESH_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [brokers]);
+
+  // ── Helpers ────────────────────────────────────────────────────────────
   function showToast(msg: string, color = "#22c55e") {
     setToast({ msg, color });
     setTimeout(() => setToast(null), 3500);
   }
 
-  // ── Persistent setters ────────────────────────────────────────────────
   function updateBrokers(next: DiaryBroker[]) {
     saveBrokers(next);
     setBrokers(next);
@@ -134,7 +245,183 @@ export default function DiaryPage() {
     setCfg(next);
   }
 
-  // ── Actions ───────────────────────────────────────────────────────────
+  // Edit a single non-balance field on an entry.
+  // `formula` is the original "=expr" text — preserved so the user sees it
+  // on next focus. Cleared when value is cleared or input is a plain number.
+  function updateEntryField(
+    entryId: string,
+    field: "manualInvested" | "transfersUsd" | "comment",
+    value: number | string | undefined,
+    formula?: string,
+  ) {
+    const next = entries.map((e) => {
+      if (e.id !== entryId) return e;
+      const updated = { ...e };
+      if (value === undefined || value === "") delete updated[field];
+      else (updated as Record<string, unknown>)[field] = value;
+      // Update formulas map for this field
+      if (field !== "comment") {
+        const formulas = { ...(e.formulas ?? {}) };
+        if (formula) formulas[field] = formula;
+        else delete formulas[field];
+        if (Object.keys(formulas).length > 0) updated.formulas = formulas;
+        else delete updated.formulas;
+      }
+      return updated;
+    });
+    saveDiaryEntries(next);
+    setEntries(next);
+  }
+
+  // Edit a single broker balance on a FROZEN entry. Live entries reject
+  // balance edits at the UI layer (EditableBalanceCell disabled prop).
+  // If the entry lacks an FX rate for the broker's non-USD currency, fetch
+  // the historical rate so Total recomputes correctly.
+  async function updateBrokerBalance(
+    entryId: string,
+    brokerId: string,
+    value: number | undefined,
+    formula?: string,
+  ) {
+    const formulaKey = `balance:${brokerId}`;
+    const next = entries.map((e) => {
+      if (e.id !== entryId) return e;
+      if (isEntryLive(e)) return e;
+      const nextBalances = { ...(e.balances ?? {}) };
+      if (value === undefined || value === 0) delete nextBalances[brokerId];
+      else nextBalances[brokerId] = value;
+      const formulas = { ...(e.formulas ?? {}) };
+      if (formula) formulas[formulaKey] = formula;
+      else delete formulas[formulaKey];
+      const updated: typeof e = { ...e, balances: nextBalances };
+      if (Object.keys(formulas).length > 0) updated.formulas = formulas;
+      else delete updated.formulas;
+      return updated;
+    });
+    saveDiaryEntries(next);
+    setEntries(next);
+
+    // Trigger FX fetch if the edited broker's currency lacks a rate on this date.
+    if (!value || value <= 0) return;
+    const broker = brokers.find((b) => b.id === brokerId);
+    const target = next.find((e) => e.id === entryId);
+    if (!broker || !target || broker.currency === "USD") return;
+    const r = target.rates ?? {};
+    const hasRate =
+      broker.currency === "TRY" ? !!r.usdPerTry :
+      broker.currency === "RUB" ? !!r.usdPerRub :
+      broker.currency === "EUR" ? !!r.usdPerEur :
+      true;
+    if (hasRate) return;
+    try {
+      const { ratesByDate } = await fetchHistoricalFxMap(
+        target.date,
+        target.date,
+        {
+          TRY: broker.currency === "TRY",
+          RUB: broker.currency === "RUB",
+          EUR: broker.currency === "EUR",
+          BTC: false,
+        },
+      );
+      const fetched = pickRatesForDate(target.date, ratesByDate);
+      if (Object.keys(fetched).length === 0) return;
+      setEntries((prev) => {
+        const updated = prev.map((e) =>
+          e.id === entryId
+            ? { ...e, rates: { ...(e.rates ?? {}), ...fetched } }
+            : e,
+        );
+        saveDiaryEntries(updated);
+        return updated;
+      });
+    } catch (err) {
+      console.warn("On-demand FX fetch failed:", err);
+    }
+  }
+
+  // ── Action handlers (passed to Settings) ──────────────────────────────
+  async function handleSnapshotNow() {
+    if (positions.length === 0) {
+      showToast("Позиций нет — снимок будет пустым", "#f59e0b");
+    }
+    const rates = await fetchCurrentRates();
+    setEntries((prev) => {
+      const next = ensureTodayEntry(prev, positions, liveQuotes, brokers, rates);
+      saveDiaryEntries(next);
+      return next;
+    });
+    showToast("Снимок обновлён");
+  }
+
+  async function handleBackfill() {
+    if (positions.length === 0) {
+      showToast("Нет позиций — нечего пересчитывать", "#ef4444");
+      return;
+    }
+    const ok = confirm(
+      "Перезаписать ВСЕ записи дневника из исторических цен и FX?\n\nЕсли в Стратегии не задана дата начала — возьму самую раннюю purchaseDate.\n\nСобытия капитала сохранятся.",
+    );
+    if (!ok) return;
+    setBackfilling(true);
+    try {
+      const result = await runBackfill({ positions, brokers, cfg });
+      saveDiaryEntries(result.entries);
+      setEntries(result.entries);
+      const w = result.warnings.length > 0 ? ` · ${result.warnings.length} предупр.` : "";
+      showToast(
+        `Сгенерировано ${result.entries.length} записей с ${result.meta.startDate} (тикеры ${result.meta.tickersFetched}/${result.meta.tickersRequested}, FX: ${result.meta.fxFetched.join(",") || "—"})${w}`,
+      );
+      if (result.warnings.length > 0) console.warn("Backfill warnings:", result.warnings);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Неизвестная ошибка";
+      showToast(`Ошибка бэкфилла: ${msg}`, "#ef4444");
+      console.error(err);
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
+  async function handleRefreshFx() {
+    if (entries.length === 0) {
+      showToast("Нет записей — нечего обновлять", "#ef4444");
+      return;
+    }
+    setRefreshingFx(true);
+    try {
+      const dates = entries.map((e) => e.date).sort();
+      const used = new Set(brokers.map((b) => b.currency));
+      const { ratesByDate, fetched, missing } = await fetchHistoricalFxMap(
+        dates[0],
+        dates[dates.length - 1],
+        {
+          TRY: used.has("TRY"),
+          RUB: used.has("RUB"),
+          EUR: used.has("EUR"),
+          BTC: brokers.some((b) => b.isCrypto),
+        },
+      );
+      let updated = 0;
+      const next = entries.map((e) => {
+        const r = pickRatesForDate(e.date, ratesByDate);
+        const merged = { ...(e.rates ?? {}), ...r };
+        if (JSON.stringify(merged) === JSON.stringify(e.rates ?? {})) return e;
+        updated += 1;
+        return { ...e, rates: merged };
+      });
+      saveDiaryEntries(next);
+      setEntries(next);
+      const m = missing.length > 0 ? ` · нет: ${missing.join(",")}` : "";
+      showToast(`Курсы обновлены для ${updated}/${entries.length} (FX: ${fetched.join(",") || "—"})${m}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Неизвестная ошибка";
+      showToast(`Ошибка обновления курсов: ${msg}`, "#ef4444");
+      console.error(err);
+    } finally {
+      setRefreshingFx(false);
+    }
+  }
+
   async function handleImport(file: File) {
     if (isNumbersFile(file)) {
       showToast(NUMBERS_EXPORT_INSTRUCTIONS, "#f59e0b");
@@ -150,191 +437,138 @@ export default function DiaryPage() {
     }
     const result = importDiaryCsv(text, brokers);
     if (result.errors.length > 0) {
-      showToast(`Ошибки: ${result.errors.join("; ")}`, "#ef4444");
+      showToast(result.errors.join(" · "), "#ef4444");
       return;
     }
-    if (result.entries.length === 0) {
-      showToast("Не найдено ни одной строки", "#f59e0b");
-      return;
-    }
-    // Merge with existing data instead of replacing.
-    // - entries: upsert by date (new wins on conflict)
-    // - capital events: dedupe by date+amountUsd+category
-    // - brokers: keep existing, append unknown labels
-    // - strategy config: keep existing if startDate already set, else apply suggested
-    const existingEntries = loadDiaryEntries();
-    const byDate = new Map(existingEntries.map((e) => [e.date, e]));
-    for (const ne of result.entries) byDate.set(ne.date, ne);
-    const mergedEntries = Array.from(byDate.values()).sort((a, b) =>
-      a.date.localeCompare(b.date)
-    );
-
-    const existingEvents = loadCapitalEvents();
-    const eventKey = (e: CapitalEvent) =>
-      `${e.date}|${Math.round(e.amountUsd)}|${e.category}`;
-    const seenEvents = new Set(existingEvents.map(eventKey));
-    const mergedEvents = [...existingEvents];
-    for (const ev of result.events) {
-      if (!seenEvents.has(eventKey(ev))) {
-        seenEvents.add(eventKey(ev));
-        mergedEvents.push(ev);
+    const existingByDate = new Map(entries.map((e) => [e.date, e]));
+    const merged = [...entries];
+    for (const e of result.entries) {
+      const ex = existingByDate.get(e.date);
+      if (ex) {
+        const idx = merged.indexOf(ex);
+        merged[idx] = { ...ex, ...e };
+      } else {
+        merged.push(e);
       }
     }
-    mergedEvents.sort((a, b) => a.date.localeCompare(b.date));
+    merged.sort((a, b) => a.date.localeCompare(b.date));
+    saveDiaryEntries(merged);
+    setEntries(merged);
 
-    const existingBrokerLabels = new Set(brokers.map((b) => b.label.toLowerCase()));
-    const newBrokersToAdd = result.brokers.filter(
-      (b) => !existingBrokerLabels.has(b.label.toLowerCase()),
-    );
-    const mergedBrokers = newBrokersToAdd.length > 0
-      ? [...brokers, ...newBrokersToAdd]
-      : brokers;
-
-    const mergedCfg = cfg.startDate ? cfg : result.suggestedConfig;
-
-    saveDiaryEntries(mergedEntries);
-    saveCapitalEvents(mergedEvents);
-    saveBrokers(mergedBrokers);
-    saveStrategyConfig(mergedCfg);
-    saveImportDiagnostics(result.diagnostics);
-    setEntries(mergedEntries);
-    setEvents(mergedEvents);
-    setBrokers(mergedBrokers);
-    setCfg(mergedCfg);
+    const eventByDateCat = new Set(events.map((ev) => `${ev.date}|${ev.category}`));
+    const newEvents = result.events.filter((ev) => !eventByDateCat.has(`${ev.date}|${ev.category}`));
+    if (newEvents.length > 0) {
+      const mergedEvents = [...events, ...newEvents];
+      saveCapitalEvents(mergedEvents);
+      setEvents(mergedEvents);
+    }
     setDiag(result.diagnostics);
-
-    const addedRows = result.entries.length;
-    const newRows = result.entries.filter((e) => !existingEntries.some((x) => x.date === e.date)).length;
-    const updatedRows = addedRows - newRows;
-    const addedEvents = mergedEvents.length - existingEvents.length;
-    const withInvested = result.entries.filter((e) => e.importedInvested !== undefined).length;
-    const withPlan = result.entries.filter((e) => e.importedPlan !== undefined).length;
-    const withOverPct = result.entries.filter((e) => e.importedOverProfitPct !== undefined).length;
-    const w = result.warnings.length > 0
-      ? ` · ${result.warnings.length} предупр.`
-      : "";
-    showToast(
-      `+${newRows} новых, ${updatedRows} обновлено, +${addedEvents} событий (Инв:${withInvested} План:${withPlan} Сверх%:${withOverPct})${w}`,
-    );
-    if (result.warnings.length > 0) {
-      console.warn("Diary import warnings:", result.warnings);
-    }
-  }
-
-  async function handleSnapshotNow() {
-    if (positions.length === 0) {
-      showToast("Позиций нет — фиксирую пустую запись", "#f59e0b");
-    }
-    const rates = await fetchCurrentRates();
-    const snap = buildSnapshotFromPositions({
-      positions,
-      quotes: liveQuotes,
-      brokers,
-      rates,
-    });
-    const today = new Date().toISOString().slice(0, 10);
-    const entry: DiaryEntry = {
-      id: `diary-${today}`,
-      date: today,
-      balances: snap.balances,
-      rates,
-      comment: undefined,
-    };
-    const next = upsertDiaryEntry(entry);
-    setEntries(next);
-    let msg = `Снимок сохранён за ${today}`;
-    if (snap.unmappedBrokers.length > 0) {
-      msg += ` · не привязаны: ${snap.unmappedBrokers.join(", ")}`;
-    }
-    if (snap.missingRates.length > 0) {
-      msg += ` · нет курса для ${snap.missingRates.join(", ")}`;
-    }
-    showToast(msg);
+    showToast(`Импорт: ${result.entries.length} записей, +${newEvents.length} событий`);
   }
 
   function handleClear() {
-    if (!confirm("Удалить ВСЕ записи дневника, события и брокеров? Это действие необратимо.")) {
-      return;
-    }
+    if (!confirm("Удалить ВСЕ записи, события, брокеров и стратегию? Действие необратимо.")) return;
     clearDiaryStorage();
     setEntries([]);
     setEvents([]);
     setBrokers(makeDefaultBrokers());
     setCfg(DEFAULT_STRATEGY_CONFIG);
+    setVisibility(DEFAULT_COLUMN_VISIBILITY);
     showToast("Дневник очищен", "#f59e0b");
   }
 
-  // ── Derived ───────────────────────────────────────────────────────────
-  const latestMetrics = useMemo(() => {
-    if (entries.length === 0 || brokers.length === 0) return null;
-    const last = entries[entries.length - 1];
-    return computeEntryMetrics({ entry: last, brokers, cfg, events });
-  }, [entries, brokers, cfg, events]);
-
   return (
     <div style={{ padding: "0 24px 32px" }}>
-      <PageHeader
-        title="Финансовый дневник"
-        subtitle="Ежедневные снапшоты, план vs факт, события капитала"
-      />
+      <PageHeader title="Финансовый дневник" subtitle="Авто-снимки из портфеля, план, фактическая доходность" />
 
-      {toast && (
-        <div
-          style={{
-            position: "fixed",
-            top: 80,
-            right: 24,
-            zIndex: 1000,
-            padding: "12px 18px",
-            borderRadius: 10,
-            background: toast.color,
-            color: "white",
-            fontSize: 13,
-            fontWeight: 600,
-            boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-            maxWidth: 460,
-          }}
-        >
-          {toast.msg}
-        </div>
-      )}
+      {toast && <ToastView msg={toast.msg} color={toast.color} />}
 
-      {/* Tabs */}
       <div style={tabsBar}>
-        <button onClick={() => setTab("journal")} style={tabBtn(tab === "journal")}>
-          Журнал
-        </button>
-        <button onClick={() => setTab("settings")} style={tabBtn(tab === "settings")}>
-          Настройки
-        </button>
+        <button onClick={() => setTab("journal")} style={tabBtn(tab === "journal")}>Журнал</button>
+        <button onClick={() => setTab("analytics")} style={tabBtn(tab === "analytics")}>Аналитика</button>
+        <button onClick={() => setTab("excel")} style={tabBtn(tab === "excel")}>Excel</button>
+        <button onClick={() => setTab("settings")} style={tabBtn(tab === "settings")}>Настройки</button>
       </div>
 
-      {tab === "journal"
-        ? (
-          <JournalTab
-            entries={entries}
-            events={events}
-            brokers={brokers}
-            cfg={cfg}
-            visibility={visibility}
-            onChangeVisibility={updateVisibility}
-            onImport={() => fileRef.current?.click()}
-            onSnapshot={handleSnapshotNow}
-            latestMetrics={latestMetrics}
-            fileRef={fileRef}
-            onFileChange={handleImport}
-          />
-        )
-        : (
-          <SettingsTab
-            cfg={cfg}
-            onChangeConfig={updateConfig}
-            brokers={brokers}
-            onOpenBrokerModal={() => setBrokerModalOpen(true)}
-            onClear={handleClear}
-            diag={diag}
-          />
-        )}
+      {tab === "journal" && (
+        <JournalView
+          entries={entries}
+          brokers={brokers}
+          cfg={cfg}
+          events={events}
+          visibility={visibility}
+          onChangeVisibility={updateVisibility}
+          onEditField={updateEntryField}
+          onEditBalance={updateBrokerBalance}
+          onOpenBrokers={() => setBrokerModalOpen(true)}
+        />
+      )}
+
+      {tab === "analytics" && (
+        <AnalyticsView entries={entries} brokers={brokers} cfg={cfg} events={events} />
+      )}
+
+      {tab === "excel" && (
+        <ExcelView positions={positions} liveQuotes={liveQuotes} brokers={brokers} />
+      )}
+
+      {tab === "settings" && (
+        <SettingsView
+          cfg={cfg}
+          onChangeConfig={updateConfig}
+          brokers={brokers}
+          onOpenBrokerModal={() => setBrokerModalOpen(true)}
+          onClear={handleClear}
+          diag={diag}
+          onSnapshot={handleSnapshotNow}
+          onBackfill={handleBackfill}
+          backfilling={backfilling}
+          onRefreshFx={handleRefreshFx}
+          refreshingFx={refreshingFx}
+          onImport={() => fileRef.current?.click()}
+          onFileChange={handleImport}
+          fileRef={fileRef}
+          entriesCount={entries.length}
+        />
+      )}
+
+      {/* Capital events panel — always visible above the table on the journal tab */}
+      {tab === "journal" && events.length > 0 && (
+        <section style={{ marginTop: 18 }}>
+          <h3 style={sectionTitle}>События капитала ({events.length})</h3>
+          <div style={eventsTableWrap}>
+            <table style={eventsTable}>
+              <thead>
+                <tr>
+                  <th style={evTh}>Дата</th>
+                  <th style={evTh}>Категория</th>
+                  <th style={{ ...evTh, textAlign: "right" }}>Сумма USD</th>
+                  <th style={evTh}>Комментарий</th>
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((ev) => (
+                  <tr key={ev.id}>
+                    <td style={evTd}>{ev.date}</td>
+                    <td style={evTd}>{CAPITAL_EVENT_LABELS[ev.category]}</td>
+                    <td
+                      style={{
+                        ...evTd,
+                        textAlign: "right",
+                        color: ev.amountUsd >= 0 ? "#22c55e" : "#ef4444",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {ev.amountUsd >= 0 ? "+" : "−"}${Math.abs(ev.amountUsd).toLocaleString("ru-RU")}
+                    </td>
+                    <td style={evTd}>{ev.comment ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {brokerModalOpen && (
         <BrokerManagerModal
@@ -347,719 +581,69 @@ export default function DiaryPage() {
   );
 }
 
-// ── Journal tab ─────────────────────────────────────────────────────────
+// ── Small helpers / styles ──────────────────────────────────────────────
 
-function JournalTab({
-  entries,
-  events,
-  brokers,
-  cfg,
-  visibility,
-  onChangeVisibility,
-  onImport,
-  onSnapshot,
-  latestMetrics,
-  fileRef,
-  onFileChange,
-}: {
-  entries: DiaryEntry[];
-  events: CapitalEvent[];
-  brokers: DiaryBroker[];
-  cfg: StrategyConfig;
-  visibility: ColumnVisibilityState;
-  onChangeVisibility: (v: ColumnVisibilityState) => void;
-  onImport: () => void;
-  onSnapshot: () => void;
-  latestMetrics: ReturnType<typeof computeEntryMetrics> | null;
-  fileRef: React.RefObject<HTMLInputElement | null>;
-  onFileChange: (f: File) => void;
-}) {
-  const sortedBrokers = useMemo(
-    () => [...brokers].sort((a, b) => a.order - b.order),
-    [brokers],
-  );
-
-  const rows = useMemo(() => {
-    return [...entries].reverse().map((e) => ({
-      entry: e,
-      metrics: computeEntryMetrics({ entry: e, brokers, cfg, events }),
-    }));
-  }, [entries, brokers, cfg, events]);
-
-  return (
-    <>
-      {/* Hero */}
-      {latestMetrics && (
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.5fr 1fr 1fr 1fr",
-            gap: 12,
-            marginBottom: 16,
-          }}
-        >
-          <HeroCard
-            label="Сверх прибыль"
-            primary={fmtPct(latestMetrics.overProfitPct)}
-            secondary={`${
-              latestMetrics.overProfitUsd >= 0 ? "+" : "−"
-            }${fmtUsd(Math.abs(latestMetrics.overProfitUsd))} над планом`}
-            accent={latestMetrics.overProfitPct >= 0 ? "#22c55e" : "#ef4444"}
-            big
-          />
-          <HeroCard
-            label="Total сейчас"
-            primary={fmtUsd(latestMetrics.totalUsd)}
-            secondary={latestMetrics.missingRates.length > 0
-              ? `Не хватает курсов: ${latestMetrics.missingRates.join(", ")}`
-              : `на ${latestMetrics.date}`}
-          />
-          <HeroCard
-            label="План (стратегия)"
-            primary={fmtUsd(latestMetrics.strategyPlan)}
-            secondary={`Инвестировано ${fmtUsd(latestMetrics.strategyInvested)}`}
-          />
-          <HeroCard
-            label="Заработано"
-            primary={fmtUsd(latestMetrics.earnedUsd)}
-            secondary={`Цель 10%: ${fmtUsd(latestMetrics.target10Pct)}`}
-            accent={latestMetrics.earnedUsd >= 0 ? "#22c55e" : "#ef4444"}
-          />
-        </section>
-      )}
-
-      {/* Action bar */}
-      <div style={actionBar}>
-        <button onClick={onSnapshot} style={btnPrimary}>
-          <Camera size={14} /> Снять снимок сейчас
-        </button>
-        <button onClick={onImport} style={btnSecondary}>
-          Импорт Excel / CSV
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".xlsx,.xls,.xlsm,.numbers,.csv,.tsv,.txt"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) onFileChange(f);
-            e.target.value = "";
-          }}
-        />
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {entries.length > 0
-              ? `${entries.length} записей · с ${entries[0].date} по ${entries[entries.length - 1].date}`
-              : "Нет данных"}
-          </span>
-          <ColumnVisibilityMenu
-            brokers={brokers}
-            visibility={visibility}
-            onChange={onChangeVisibility}
-          />
-        </div>
-      </div>
-
-      {/* Capital events */}
-      {events.length > 0 && (
-        <section style={{ marginBottom: 16 }}>
-          <h3 style={sectionTitle}>События капитала ({events.length})</h3>
-          <div style={tableWrap}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={th}>Дата</th>
-                  <th style={th}>Категория</th>
-                  <th style={{ ...th, textAlign: "right" }}>Сумма USD</th>
-                  <th style={th}>Комментарий</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((ev) => (
-                  <tr key={ev.id}>
-                    <td style={td}>{ev.date}</td>
-                    <td style={td}>{CAPITAL_EVENT_LABELS[ev.category]}</td>
-                    <td
-                      style={{
-                        ...td,
-                        textAlign: "right",
-                        color: ev.amountUsd >= 0 ? "#22c55e" : "#ef4444",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {ev.amountUsd >= 0 ? "+" : "−"}
-                      {fmtUsd(Math.abs(ev.amountUsd))}
-                    </td>
-                    <td style={td}>{ev.comment ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {/* Journal table */}
-      <section>
-        <h3 style={sectionTitle}>Журнал ({entries.length})</h3>
-        {entries.length === 0
-          ? <EmptyState />
-          : (
-            <div style={{ ...tableWrap, maxHeight: "65vh" }}>
-              <table style={tableStyle}>
-                <thead>
-                  <tr>
-                    <th style={{ ...th, ...stickyFirstCol }}>Дата</th>
-                    {sortedBrokers.map((b) =>
-                      isColVisible(visibility, `broker:${b.id}`, true) && (
-                        <th key={b.id} style={{ ...th, textAlign: "right" }}>
-                          {b.label}
-                          <div style={{ fontSize: 9, fontWeight: 400, color: "var(--text-muted)", textTransform: "none" }}>
-                            {b.currency}
-                          </div>
-                        </th>
-                      )
-                    )}
-                    {isColVisible(visibility, "totalUsd", true) && <th style={{ ...th, textAlign: "right" }}>Total USD</th>}
-                    {isColVisible(visibility, "investedFromPositions", true) && <th style={{ ...th, textAlign: "right" }}>Инвестировано</th>}
-                    {isColVisible(visibility, "target10Pct", true) && <th style={{ ...th, textAlign: "right" }}>Цель 10%</th>}
-                    {isColVisible(visibility, "earnedUsd", true) && <th style={{ ...th, textAlign: "right" }}>Заработано</th>}
-                    {isColVisible(visibility, "strategyPlan", true) && <th style={{ ...th, textAlign: "right" }}>План</th>}
-                    {isColVisible(visibility, "overProfitPct", true) && <th style={{ ...th, textAlign: "right" }}>Сверх %</th>}
-                    {isColVisible(visibility, "balanceEur", false) && <th style={{ ...th, textAlign: "right" }}>EUR</th>}
-                    {isColVisible(visibility, "balanceBtc", false) && <th style={{ ...th, textAlign: "right" }}>BTC</th>}
-                    {isColVisible(visibility, "balanceTry", false) && <th style={{ ...th, textAlign: "right" }}>TRY</th>}
-                    {isColVisible(visibility, "balanceRub", false) && <th style={{ ...th, textAlign: "right" }}>RUB</th>}
-                    {isColVisible(visibility, "comment", true) && <th style={th}>Комент</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(({ entry: e, metrics: m }) => (
-                    <tr key={e.id}>
-                      <td style={{ ...td, ...stickyFirstCol, fontWeight: 600 }}>{e.date}</td>
-                      {sortedBrokers.map((b) =>
-                        isColVisible(visibility, `broker:${b.id}`, true) && (
-                          <td key={b.id} style={{ ...td, textAlign: "right" }}>
-                            {fmtNative(e.balances[b.id] || 0, b.currency)}
-                          </td>
-                        )
-                      )}
-                      {isColVisible(visibility, "totalUsd", true) && (
-                        <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>
-                          {fmtUsd(m.totalUsd)}
-                        </td>
-                      )}
-                      {isColVisible(visibility, "investedFromPositions", true) && (
-                        <td style={{ ...td, textAlign: "right", color: "var(--text-muted)" }}>
-                          {fmtUsd(m.positionInvested)}
-                        </td>
-                      )}
-                      {isColVisible(visibility, "target10Pct", true) && (
-                        <td style={{ ...td, textAlign: "right", color: "var(--text-muted)" }}>
-                          {fmtUsd(m.target10Pct)}
-                        </td>
-                      )}
-                      {isColVisible(visibility, "earnedUsd", true) && (
-                        <td
-                          style={{
-                            ...td,
-                            textAlign: "right",
-                            color: m.earnedUsd >= 0 ? "#22c55e" : "#ef4444",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {fmtUsd(m.earnedUsd)}
-                        </td>
-                      )}
-                      {isColVisible(visibility, "strategyPlan", true) && (
-                        <td style={{ ...td, textAlign: "right", color: "var(--text-muted)" }}>
-                          {fmtUsd(m.strategyPlan)}
-                        </td>
-                      )}
-                      {isColVisible(visibility, "overProfitPct", true) && (
-                        <td
-                          style={{
-                            ...td,
-                            textAlign: "right",
-                            color: m.overProfitPct >= 0 ? "#22c55e" : "#ef4444",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {fmtPct(m.overProfitPct)}
-                        </td>
-                      )}
-                      {isColVisible(visibility, "balanceEur", false) && (
-                        <td style={{ ...td, textAlign: "right" }}>{e.balanceEur ? `€${e.balanceEur.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}` : "—"}</td>
-                      )}
-                      {isColVisible(visibility, "balanceBtc", false) && (
-                        <td style={{ ...td, textAlign: "right" }}>{e.balanceBtc ? `₿${e.balanceBtc.toFixed(4)}` : "—"}</td>
-                      )}
-                      {isColVisible(visibility, "balanceTry", false) && (
-                        <td style={{ ...td, textAlign: "right" }}>{e.balanceTry ? `₺${e.balanceTry.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}` : "—"}</td>
-                      )}
-                      {isColVisible(visibility, "balanceRub", false) && (
-                        <td style={{ ...td, textAlign: "right" }}>{e.balanceRub ? `₽${e.balanceRub.toLocaleString("ru-RU", { maximumFractionDigits: 0 })}` : "—"}</td>
-                      )}
-                      {isColVisible(visibility, "comment", true) && (
-                        <td style={{ ...td, fontSize: 11, color: "var(--text-muted)" }}>{e.comment ?? ""}</td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-      </section>
-    </>
-  );
-}
-
-// ── Settings tab ────────────────────────────────────────────────────────
-
-function SettingsTab({
-  cfg,
-  onChangeConfig,
-  brokers,
-  onOpenBrokerModal,
-  onClear,
-  diag,
-}: {
-  cfg: StrategyConfig;
-  onChangeConfig: (next: StrategyConfig) => void;
-  brokers: DiaryBroker[];
-  onOpenBrokerModal: () => void;
-  onClear: () => void;
-  diag: ImportDiagnostics | null;
-}) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
-      {/* Strategy */}
-      <section style={settingsCard}>
-        <h3 style={sectionTitle}>Стратегия baseline</h3>
-        <p style={subline}>
-          План = «Инвестировано» × 10% годовых × (дней с начала / 365). Меняется
-          при capital events. Считаем по календарным дням, выходные включены.
-        </p>
-        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-          <FieldRow label="Дата старта">
-            <input
-              type="date"
-              value={cfg.startDate}
-              onChange={(e) => onChangeConfig({ ...cfg, startDate: e.target.value })}
-              style={inputStyle}
-            />
-          </FieldRow>
-          <FieldRow label="Стартовая сумма (USD)">
-            <input
-              type="number"
-              value={cfg.initialInvested}
-              onChange={(e) => onChangeConfig({ ...cfg, initialInvested: Number(e.target.value) })}
-              style={inputStyle}
-            />
-          </FieldRow>
-          <FieldRow label="Годовая ставка">
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="number"
-                step="0.01"
-                value={cfg.annualRate * 100}
-                onChange={(e) => onChangeConfig({ ...cfg, annualRate: Number(e.target.value) / 100 })}
-                style={inputStyle}
-              />
-              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>%</span>
-            </div>
-          </FieldRow>
-          <FieldRow label="Дней в году">
-            <input
-              type="number"
-              value={cfg.calendarDaysPerYear}
-              onChange={(e) => onChangeConfig({ ...cfg, calendarDaysPerYear: Number(e.target.value) })}
-              style={inputStyle}
-            />
-          </FieldRow>
-        </div>
-      </section>
-
-      {/* Brokers */}
-      <section style={settingsCard}>
-        <h3 style={sectionTitle}>Брокеры ({brokers.length})</h3>
-        <p style={subline}>
-          Каждый брокер = колонка в журнале. Маппинг привязывает имена из{" "}
-          <code style={code}>/positions</code> к этому брокеру.
-        </p>
-        <ul style={{ listStyle: "none", padding: 0, margin: "12px 0" }}>
-          {brokers.map((b) => (
-            <li key={b.id} style={brokerRowShort}>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>{b.label}</span>
-              <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 4, background: "var(--bg-secondary)", color: "var(--text-muted)" }}>
-                {b.currency}
-              </span>
-              <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>
-                {b.positionBrokers.length > 0 ? `${b.positionBrokers.length} имён` : "не настроен"}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <button onClick={onOpenBrokerModal} style={btnPrimary}>
-          <SettingsIcon size={13} /> Открыть управление
-        </button>
-      </section>
-
-      {/* Import diagnostics — always visible so user can find it after import */}
-      <section style={{ ...settingsCard, gridColumn: "1 / -1" }}>
-        <h3 style={sectionTitle}>Диагностика последнего импорта</h3>
-        <p style={subline}>
-          Показывает что было распознано в файле. Если поле <b>null</b> — regex
-          не нашёл колонку и значение в журнале будет пустым.
-        </p>
-        {diag
-          ? <DiagnosticsPanel diag={diag} />
-          : (
-            <div style={{
-              marginTop: 12,
-              padding: 16,
-              background: "var(--bg-secondary)",
-              borderRadius: 8,
-              border: "1px dashed var(--border)",
-              textAlign: "center",
-              fontSize: 12,
-              color: "var(--text-muted)",
-            }}>
-              Импорта ещё не было. Перейди на вкладку «Журнал», нажми «Импорт
-              Excel / CSV» и выбери файл — здесь появится отчёт.
-            </div>
-          )}
-      </section>
-
-      {/* Danger zone */}
-      <section style={{ ...settingsCard, gridColumn: "1 / -1" }}>
-        <h3 style={{ ...sectionTitle, color: "#ef4444" }}>Опасная зона</h3>
-        <p style={subline}>
-          Удалит все записи дневника, capital events и брокеров (брокеры
-          вернутся к дефолтным). Колонки видимости останутся.
-        </p>
-        <button onClick={onClear} style={{ ...btnDanger, marginTop: 12 }}>
-          <Trash2 size={13} /> Очистить дневник полностью
-        </button>
-      </section>
-    </div>
-  );
-}
-
-function DiagnosticsPanel({ diag }: { diag: ImportDiagnostics }) {
-  const fields: { key: string; label: string; value: string | null }[] = [
-    { key: "date", label: "Дата", value: diag.detected.date },
-    { key: "invested", label: "Инвестировано", value: diag.detected.invested },
-    { key: "plan10pct", label: "По стоку 10%", value: diag.detected.plan10pct },
-    { key: "overProfitPct", label: "Сверх %", value: diag.detected.overProfitPct },
-    { key: "total", label: "Total", value: diag.detected.total },
-    { key: "eventAmount", label: "Перевод (USD event)", value: diag.detected.eventAmount },
-    { key: "comment", label: "Комментарий", value: diag.detected.comment },
-    { key: "currentLira", label: "Курс лиры", value: diag.detected.currentLira },
-    { key: "eur", label: "Баланс EUR", value: diag.detected.eur },
-    { key: "btc", label: "Баланс BTC", value: diag.detected.btc },
-    { key: "try_", label: "Баланс TRY", value: diag.detected.try_ },
-    { key: "rub", label: "Баланс RUB", value: diag.detected.rub },
-  ];
-  return (
-    <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-      {/* Counts */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-        <CountBox label="Инв." value={diag.counts.importedInvested} />
-        <CountBox label="План" value={diag.counts.importedPlan} />
-        <CountBox label="Сверх %" value={diag.counts.importedOverProfitPct} />
-        <CountBox label="События" value={diag.counts.capitalEvents} />
-      </div>
-
-      {/* Detected columns */}
-      <div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, fontWeight: 700, textTransform: "uppercase" }}>
-          Сопоставленные колонки
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-          {fields.map((f) => (
-            <div key={f.key} style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-              padding: "6px 10px",
-              background: "var(--bg-secondary)",
-              borderLeft: `3px solid ${f.value ? "#22c55e" : "#ef4444"}`,
-              borderRadius: 4,
-              fontSize: 11,
-            }}>
-              <span style={{ color: "var(--text-secondary)" }}>{f.label}</span>
-              <span style={{
-                fontFamily: "ui-monospace, monospace",
-                color: f.value ? "var(--text-primary)" : "#ef4444",
-                fontWeight: 600,
-              }}>
-                {f.value ?? "null"}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Broker columns */}
-      <div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, fontWeight: 700, textTransform: "uppercase" }}>
-          Брокеры ({Object.keys(diag.detected.brokers).length})
-        </div>
-        {Object.keys(diag.detected.brokers).length === 0
-          ? <div style={{ fontSize: 11, color: "#ef4444" }}>Ни один броker не сматчился</div>
-          : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {Object.entries(diag.detected.brokers).map(([label, header]) => (
-                <span key={label} style={{
-                  fontSize: 11,
-                  padding: "3px 8px",
-                  borderRadius: 4,
-                  background: "rgba(34,197,94,0.12)",
-                  color: "#22c55e",
-                  fontFamily: "ui-monospace, monospace",
-                }}>
-                  {label} → {header}
-                </span>
-              ))}
-            </div>
-          )}
-      </div>
-
-      {/* All headers */}
-      <details>
-        <summary style={{
-          cursor: "pointer",
-          fontSize: 11,
-          color: "var(--text-muted)",
-          fontWeight: 700,
-          textTransform: "uppercase",
-        }}>
-          Все заголовки файла ({diag.headers.length})
-        </summary>
-        <div style={{
-          marginTop: 8,
-          padding: 10,
-          background: "var(--bg-secondary)",
-          borderRadius: 6,
-          fontSize: 11,
-          fontFamily: "ui-monospace, monospace",
-          color: "var(--text-secondary)",
-          lineHeight: 1.6,
-          maxHeight: 200,
-          overflow: "auto",
-        }}>
-          {diag.headers.map((h, i) => (
-            <div key={i}>
-              <span style={{ color: "var(--text-muted)" }}>[{i}]</span> {h || <em style={{ color: "#ef4444" }}>пусто</em>}
-            </div>
-          ))}
-        </div>
-      </details>
-    </div>
-  );
-}
-
-function CountBox({ label, value }: { label: string; value: number }) {
-  const color = value > 0 ? "#22c55e" : "#ef4444";
-  return (
-    <div style={{
-      padding: "10px 12px",
-      background: "var(--bg-secondary)",
-      borderRadius: 8,
-      borderTop: `3px solid ${color}`,
-    }}>
-      <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color }}>{value}</div>
-    </div>
-  );
-}
-
-// ── Small components ────────────────────────────────────────────────────
-
-function HeroCard(props: {
-  label: string;
-  primary: string;
-  secondary?: string;
-  accent?: string;
-  big?: boolean;
-}) {
+function ToastView({ msg, color }: { msg: string; color: string }) {
   return (
     <div
       style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--border)",
-        borderRadius: 12,
-        padding: props.big ? "20px 22px" : "16px 18px",
+        position: "fixed",
+        top: 80,
+        right: 24,
+        zIndex: 1000,
+        padding: "12px 18px",
+        borderRadius: 10,
+        background: color,
+        color: "white",
+        fontSize: 13,
+        fontWeight: 600,
+        boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
+        maxWidth: 460,
       }}
     >
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: 0.5,
-          marginBottom: 6,
-        }}
-      >
-        {props.label}
-      </div>
-      <div
-        style={{
-          fontSize: props.big ? 34 : 22,
-          fontWeight: 700,
-          color: props.accent ?? "var(--text-primary)",
-          lineHeight: 1.1,
-        }}
-      >
-        {props.primary}
-      </div>
-      {props.secondary && (
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--text-secondary)",
-            marginTop: 6,
-          }}
-        >
-          {props.secondary}
-        </div>
-      )}
+      {msg}
     </div>
   );
 }
-
-function EmptyState() {
-  return (
-    <div
-      style={{
-        background: "var(--bg-card)",
-        border: "1px dashed var(--border)",
-        borderRadius: 12,
-        padding: "40px 24px",
-        textAlign: "center",
-        color: "var(--text-muted)",
-      }}
-    >
-      <div style={{ fontSize: 14, marginBottom: 6 }}>Дневник пуст</div>
-      <div style={{ fontSize: 12 }}>
-        Нажмите «Импорт Excel/CSV» и выберите файл (.xlsx, .xls или .csv).
-        Или «Снять снимок сейчас» — соберёт балансы из ваших позиций.
-      </div>
-    </div>
-  );
-}
-
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 8, alignItems: "center" }}>
-      <label style={{ fontSize: 12, color: "var(--text-secondary)" }}>{label}</label>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-// ── Styles ──────────────────────────────────────────────────────────────
 
 const tabsBar: React.CSSProperties = {
   display: "flex",
-  gap: 4,
-  borderBottom: "1px solid var(--border)",
+  gap: 6,
   marginBottom: 18,
+  borderBottom: "1px solid var(--border)",
 };
-
-function tabBtn(active: boolean): React.CSSProperties {
-  return {
-    padding: "10px 18px",
-    border: "none",
-    background: "transparent",
-    color: active ? "var(--text-primary)" : "var(--text-muted)",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 600,
-    borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}`,
-    marginBottom: -1,
-  };
-}
-
-const actionBar: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  marginBottom: 14,
-  flexWrap: "wrap",
-};
-
-const btnPrimary: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "9px 14px",
-  borderRadius: 8,
-  border: "1px solid var(--accent)",
-  background: "var(--accent)",
-  color: "white",
+const tabBtn = (active: boolean): React.CSSProperties => ({
+  padding: "10px 16px",
+  background: "transparent",
+  border: "none",
+  borderBottom: active ? "2px solid var(--accent, #3b82f6)" : "2px solid transparent",
+  color: active ? "var(--text-primary)" : "var(--text-muted)",
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
-};
-
-const btnSecondary: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "9px 14px",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  background: "var(--bg-card)",
-  color: "var(--text-secondary)",
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const btnDanger: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "9px 14px",
-  borderRadius: 8,
-  border: "1px solid rgba(239,68,68,0.3)",
-  background: "rgba(239,68,68,0.08)",
-  color: "#ef4444",
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-};
+});
 
 const sectionTitle: React.CSSProperties = {
-  fontSize: 12,
+  margin: 0,
+  fontSize: 13,
   fontWeight: 700,
-  color: "var(--text-secondary)",
   textTransform: "uppercase",
-  letterSpacing: 0.5,
-  margin: "0 0 10px",
+  letterSpacing: 0.4,
+  color: "var(--text-muted)",
+  marginBottom: 8,
 };
-
-const tableWrap: React.CSSProperties = {
+const eventsTableWrap: React.CSSProperties = {
   background: "var(--bg-card)",
   border: "1px solid var(--border)",
-  borderRadius: 10,
+  borderRadius: 12,
   overflow: "auto",
 };
-
-const tableStyle: React.CSSProperties = {
+const eventsTable: React.CSSProperties = {
   width: "100%",
-  borderCollapse: "separate",
-  borderSpacing: 0,
+  borderCollapse: "collapse",
   fontSize: 12,
 };
-
-const th: React.CSSProperties = {
+const evTh: React.CSSProperties = {
   textAlign: "left",
   padding: "10px 12px",
   background: "var(--bg-secondary)",
@@ -1069,63 +653,10 @@ const th: React.CSSProperties = {
   fontWeight: 700,
   textTransform: "uppercase",
   letterSpacing: 0.3,
-  position: "sticky",
-  top: 0,
-  zIndex: 2,
 };
-
-const td: React.CSSProperties = {
+const evTd: React.CSSProperties = {
   padding: "8px 12px",
   borderBottom: "1px solid var(--border)",
   color: "var(--text-primary)",
   whiteSpace: "nowrap",
-};
-
-const stickyFirstCol: React.CSSProperties = {
-  position: "sticky",
-  left: 0,
-  background: "var(--bg-card)",
-  zIndex: 1,
-  borderRight: "1px solid var(--border)",
-};
-
-const settingsCard: React.CSSProperties = {
-  background: "var(--bg-card)",
-  border: "1px solid var(--border)",
-  borderRadius: 12,
-  padding: 18,
-};
-
-const subline: React.CSSProperties = {
-  margin: 0,
-  fontSize: 12,
-  color: "var(--text-muted)",
-  lineHeight: 1.5,
-};
-
-const code: React.CSSProperties = {
-  background: "var(--bg-secondary)",
-  padding: "1px 5px",
-  borderRadius: 4,
-  fontSize: 11,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "7px 10px",
-  borderRadius: 6,
-  border: "1px solid var(--border)",
-  background: "var(--bg-secondary)",
-  color: "var(--text-primary)",
-  fontSize: 13,
-};
-
-const brokerRowShort: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "8px 10px",
-  background: "var(--bg-secondary)",
-  borderRadius: 6,
-  marginBottom: 4,
 };

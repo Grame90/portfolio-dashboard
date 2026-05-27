@@ -9,6 +9,10 @@ import {
   CURRENCY_LABELS,
 } from "@/lib/diary/types";
 import type { BrokerCurrency, DiaryBroker } from "@/lib/diary/types";
+import {
+  inferBrokerCurrency,
+  summarizeCurrencyMix,
+} from "@/lib/diary/broker-currency";
 import { usePortfolioStore } from "@/lib/store/usePortfolioStore";
 
 interface Props {
@@ -155,6 +159,7 @@ export default function BrokerManagerModal({
                     draft={draft}
                     setDraft={setDraft}
                     positionBrokerNames={positionBrokerNames}
+                    positions={positions}
                     onSave={saveDraft}
                     onCancel={cancelDraft}
                   />
@@ -195,6 +200,7 @@ export default function BrokerManagerModal({
                 draft={draft}
                 setDraft={setDraft}
                 positionBrokerNames={positionBrokerNames}
+                positions={positions}
                 onSave={saveDraft}
                 onCancel={cancelDraft}
               />
@@ -236,21 +242,42 @@ function BrokerForm({
   draft,
   setDraft,
   positionBrokerNames,
+  positions,
   onSave,
   onCancel,
 }: {
   draft: DiaryBroker;
   setDraft: (b: DiaryBroker) => void;
   positionBrokerNames: string[];
+  positions: import("@/lib/types").StoredPosition[];
   onSave: () => void;
   onCancel: () => void;
 }) {
   const [newMapping, setNewMapping] = useState("");
 
+  // Auto-detected currency from positions matching this broker's mapping.
+  // We don't auto-apply on every change (user may have intentionally overridden);
+  // instead we surface the suggestion and an explicit "Авто" button to apply.
+  const inferredCurrency = useMemo(
+    () => inferBrokerCurrency(draft.positionBrokers, positions),
+    [draft.positionBrokers, positions],
+  );
+  const currencyMix = useMemo(
+    () => summarizeCurrencyMix(draft.positionBrokers, positions),
+    [draft.positionBrokers, positions],
+  );
+
   function addMapping(name: string) {
     const v = name.trim();
     if (!v || draft.positionBrokers.includes(v)) return;
-    setDraft({ ...draft, positionBrokers: [...draft.positionBrokers, v] });
+    const nextMapping = [...draft.positionBrokers, v];
+    // Auto-set currency if user hasn't intentionally chosen one yet (= default USD on fresh draft).
+    const auto = inferBrokerCurrency(nextMapping, positions);
+    setDraft({
+      ...draft,
+      positionBrokers: nextMapping,
+      currency: auto ?? draft.currency,
+    });
     setNewMapping("");
   }
   function removeMapping(name: string) {
@@ -273,7 +300,29 @@ function BrokerForm({
           />
         </div>
         <div>
-          <label style={lblStyle}>Валюта</label>
+          <label style={lblStyle}>
+            Валюта
+            {inferredCurrency && inferredCurrency !== draft.currency && (
+              <button
+                type="button"
+                onClick={() => setDraft({ ...draft, currency: inferredCurrency })}
+                style={{
+                  marginLeft: 6,
+                  padding: "1px 6px",
+                  fontSize: 10,
+                  borderRadius: 4,
+                  border: "1px solid var(--accent, #3b82f6)",
+                  background: "transparent",
+                  color: "var(--accent, #3b82f6)",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+                title="Применить валюту, определённую по позициям"
+              >
+                ← {inferredCurrency}
+              </button>
+            )}
+          </label>
           <select
             value={draft.currency}
             onChange={(e) =>
@@ -285,6 +334,11 @@ function BrokerForm({
               <option key={c} value={c}>{CURRENCY_LABELS[c]}</option>
             ))}
           </select>
+          {currencyMix && (
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+              В позициях: {currencyMix}
+            </div>
+          )}
         </div>
       </div>
 

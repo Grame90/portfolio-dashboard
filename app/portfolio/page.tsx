@@ -191,7 +191,7 @@ export default function PortfolioPage() {
 
     setQuoteStatus("loading");
     try {
-      const allData: Record<string, { current: number; previousClose: number; t?: number }> = {};
+      const allData: Record<string, { current: number; previousClose: number; t?: number; marketState?: string; futureSymbol?: string; futurePct?: number }> = {};
 
       if (stockPositions.length > 0) {
         const tickers = stockPositions.map((p) => p.ticker);
@@ -214,7 +214,7 @@ export default function PortfolioPage() {
             if (!q || q.current <= 0) return p;
             const direction = q.current > p.currentPrice ? "up" : q.current < p.currentPrice ? "down" : null;
             setLastTick((lt) => ({ ...lt, [p.id]: direction }));
-            return { ...p, currentPrice: q.current, previousClose: q.previousClose };
+            return { ...p, currentPrice: q.current, previousClose: q.previousClose, marketState: q.marketState, futureSymbol: q.futureSymbol, futurePct: q.futurePct };
           })
         )
       );
@@ -235,7 +235,7 @@ export default function PortfolioPage() {
       tickUpdates[p.id] = q.current > p.currentPrice ? "up" : q.current < p.currentPrice ? "down" : null;
       if (q.current === p.currentPrice) return p;
       anyChange = true;
-      return { ...p, currentPrice: q.current, previousClose: q.previousClose };
+      return { ...p, currentPrice: q.current, previousClose: q.previousClose, marketState: q.marketState, futureSymbol: q.futureSymbol, futurePct: q.futurePct };
     });
     if (anyChange) app.setPositions(recompute(updated) as any);
     setLastTick(prev => ({ ...prev, ...tickUpdates }));
@@ -620,9 +620,52 @@ export default function PortfolioPage() {
             <div className="metric-label">USD</div>
             {(() => {
               const dailyChange = portfolioTotal - prevTotal;
+              // Count positions whose underlying market is closed → ETF price is frozen.
+              // Compose tooltip lines about futures alternatives (silver/gold/oil).
+              const stale = positions.filter((p) => {
+                const ms = (p as { marketState?: string }).marketState;
+                return ms && ms !== "REGULAR";
+              });
+              const futureHints = positions
+                .filter((p) => {
+                  const fs = (p as { futureSymbol?: string }).futureSymbol;
+                  const fp = (p as { futurePct?: number }).futurePct;
+                  return fs && typeof fp === "number";
+                })
+                .map((p) => {
+                  const fs = (p as { futureSymbol?: string }).futureSymbol!;
+                  const fp = (p as { futurePct?: number }).futurePct!;
+                  return `${p.ticker} → ${fs}: ${fp >= 0 ? "+" : ""}${fp.toFixed(2)}%`;
+                });
+              const hasStale = stale.length > 0;
+              const dotColor = hasStale ? "#f59e0b" : "#22c55e";
+              const tooltipParts: string[] = [];
+              if (hasStale) {
+                tooltipParts.push(`Биржи закрыты для ${stale.length}/${positions.length} позиций — их цена «застыла» на закрытии`);
+              } else {
+                tooltipParts.push("Все рынки активны, цены актуальные");
+              }
+              if (futureHints.length > 0) {
+                tooltipParts.push("");
+                tooltipParts.push("Фьючерсы сейчас (after-hours):");
+                tooltipParts.push(...futureHints);
+              }
+              const tooltip = tooltipParts.join("\n");
               return (
-                <div className={dailyChange >= 0 ? "positive" : "negative"} style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>
-                  {dailyChange >= 0 ? "+" : ""}{Math.round(Math.abs(dailyChange)).toLocaleString("en-US")} ({dailyChange >= 0 ? "+" : ""}{dailyChangePct.toFixed(2)}%)
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+                  <span
+                    title={tooltip}
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: dotColor,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div className={dailyChange >= 0 ? "positive" : "negative"} style={{ fontSize: 14, fontWeight: 600 }}>
+                    {dailyChange >= 0 ? "+" : ""}{Math.round(Math.abs(dailyChange)).toLocaleString("en-US")} ({dailyChange >= 0 ? "+" : ""}{dailyChangePct.toFixed(2)}%)
+                  </div>
                 </div>
               );
             })()}

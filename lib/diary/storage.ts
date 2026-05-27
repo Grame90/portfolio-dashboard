@@ -14,12 +14,35 @@ import {
   makeDefaultBrokers,
 } from "./types";
 
-export const LS_DIARY_ENTRIES = "diary-entries-v1";
-export const LS_DIARY_CAPITAL_EVENTS = "diary-capital-events-v1";
-export const LS_DIARY_STRATEGY = "diary-strategy-v1";
-export const LS_DIARY_BROKERS = "diary-brokers-v1";
-export const LS_DIARY_COLUMNS = "diary-columns-v1";
-export const LS_DIARY_IMPORT_DIAG = "diary-import-diag-v1";
+// Diary storage schema version. Bump to force a clean wipe of all `diary-*`
+// keys on the next mount (handled by `migrateDiaryStorage` below).
+export const DIARY_SCHEMA_VERSION = 2;
+export const LS_DIARY_SCHEMA_VERSION = "diary-schema-version";
+
+export const LS_DIARY_ENTRIES = "diary-entries-v2";
+export const LS_DIARY_CAPITAL_EVENTS = "diary-capital-events-v2";
+export const LS_DIARY_STRATEGY = "diary-strategy-v2";
+export const LS_DIARY_BROKERS = "diary-brokers-v2";
+export const LS_DIARY_COLUMNS = "diary-columns-v2";
+export const LS_DIARY_IMPORT_DIAG = "diary-import-diag-v2";
+
+// Wipe all `diary-*` keys if the stored schema version is below the current
+// one. Idempotent: only runs once per schema bump.
+export function migrateDiaryStorage(): void {
+  if (typeof window === "undefined") return;
+  const stored = parseInt(
+    localStorage.getItem(LS_DIARY_SCHEMA_VERSION) || "0",
+    10,
+  );
+  if (stored >= DIARY_SCHEMA_VERSION) return;
+  const toRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("diary-")) toRemove.push(k);
+  }
+  for (const k of toRemove) localStorage.removeItem(k);
+  localStorage.setItem(LS_DIARY_SCHEMA_VERSION, String(DIARY_SCHEMA_VERSION));
+}
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;

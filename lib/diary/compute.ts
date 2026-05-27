@@ -85,6 +85,9 @@ export type EntryMetricsInput = {
   cfg: StrategyConfig;
   events: CapitalEvent[];
   positionInvested?: number; // optional, defaults to strategyInvested
+  // Σ of transfersUsd from all entries with date <= this entry's date.
+  // Added to the auto-computed invested baseline; ignored when manualInvested override is set.
+  cumulativeTransfersUsd?: number;
 };
 
 function daysSinceStart(date: string, startDate: string): number {
@@ -106,39 +109,30 @@ export function computeEntryMetrics(
   input: EntryMetricsInput,
 ): EntryMetrics {
   const { entry, brokers, cfg, events } = input;
-  const { totalUsd: computedTotal, missingRates } = sumBalancesInUsd(entry, brokers);
-  // If the source row had its own Total USD column, trust it.
-  const totalUsd = entry.totalUsd && entry.totalUsd > 0
-    ? entry.totalUsd
-    : computedTotal;
+  // Source of truth = broker balances (from /positions or Excel) + FX rates.
+  // All derived columns are recomputed; Excel-imported plan/invested/over% are ignored.
+  const { totalUsd, missingRates } = sumBalancesInUsd(entry, brokers);
   const baseline = computeBaseline(entry.date, cfg, events);
+  const strategyPlan = baseline.plan;
 
-  // Prefer imported plan from the source spreadsheet over the computed
-  // baseline, but fall back to computed for entries created without import.
-  const strategyPlan = entry.importedPlan && entry.importedPlan > 0
-    ? entry.importedPlan
-    : baseline.plan;
+  const overProfitUsd = totalUsd - strategyPlan;
+  // Сверх % = План ÷ (Total − План) × 100
+  // (По выбору пользователя — не классический «% перевыполнения», а
+  // обратное отношение: «во сколько раз План больше превышения».)
+  const overProfitPct = overProfitUsd !== 0
+    ? (strategyPlan / overProfitUsd) * 100
+    : 0;
 
-  // overProfit: prefer imported %, derive USD from it; otherwise compute both.
-  let overProfitPct: number;
-  let overProfitUsd: number;
-  if (entry.importedOverProfitPct !== undefined) {
-    overProfitPct = entry.importedOverProfitPct;
-    overProfitUsd = strategyPlan > 0
-      ? (overProfitPct / 100) * strategyPlan
-      : 0;
-  } else {
-    overProfitUsd = totalUsd - strategyPlan;
-    overProfitPct = strategyPlan > 0
-      ? (overProfitUsd / strategyPlan) * 100
-      : 0;
-  }
-
-  // positionInvested: imported wins, otherwise caller-provided, otherwise
-  // strategy baseline invested.
-  const positionInvested = entry.importedInvested && entry.importedInvested > 0
-    ? entry.importedInvested
-    : (input.positionInvested ?? baseline.invested);
+  // positionInvested priority:
+  //   1. manualInvested — absolute user override (transfers ignored)
+  //   2. (live snapshot ?? strategy baseline) + cumulative transfers up to this date
+  const autoInvested =
+    (input.positionInvested ?? baseline.invested) +
+    (input.cumulativeTransfersUsd ?? 0);
+  const positionInvested =
+    entry.manualInvested !== undefined && entry.manualInvested >= 0
+      ? entry.manualInvested
+      : autoInvested;
 
   const days = daysSinceStart(entry.date, cfg.startDate);
   const target10Pct =

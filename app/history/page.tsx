@@ -119,7 +119,16 @@ export default function HistoryPage() {
     return () => { cancelled = true; };
   }, [calendarTickerKey]);
 
-  // Load localStorage portfolio-chart-history + fetch Finnhub candles
+  // Stable ticker key — same pattern as calendarTickerKey. realPositions
+  // gets a fresh array reference on every quote tick (300ms), so depending
+  // on the array directly causes the historical-prices fetch to re-fire in
+  // an infinite loop. Reduce to a sorted string keyed on the ticker set only.
+  const histTickerKey = useMemo(
+    () => realPositions.filter(p => p.type !== "Кэш" && p.type !== "Крипто").map(p => p.ticker).sort().join(","),
+    [realPositions]
+  );
+
+  // Load localStorage portfolio-chart-history + fetch historical candles.
   useEffect(() => {
     try {
       const raw = localStorage.getItem("portfolio-chart-history");
@@ -129,16 +138,12 @@ export default function HistoryPage() {
       }
     } catch {}
 
-    const tickers = realPositions
-      .filter(p => p.type !== "Кэш" && p.type !== "Крипто")
-      .map(p => p.ticker);
-    if (tickers.length > 0) {
-      fetch(`/api/historical?tickers=${tickers.join(",")}&days=500`)
-        .then(r => r.ok ? r.json() : {})
-        .then(data => setHistData(data || {}))
-        .catch(() => {});
-    }
-  }, [realPositions]);
+    if (histTickerKey.length === 0) return;
+    fetch(`/api/historical?tickers=${histTickerKey}&days=500`)
+      .then(r => r.ok ? r.json() : {})
+      .then(data => setHistData(data || {}))
+      .catch(() => {});
+  }, [histTickerKey]);
 
   // Compute portfolio value at each date using instrument prices × current quantities
   const computedTimeline = useMemo((): { date: string; value: number }[] => {

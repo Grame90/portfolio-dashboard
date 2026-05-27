@@ -105,6 +105,17 @@ export type DiaryEntry = {
   importedInvested?: number; // "Инвестировано" column, USD
   importedPlan?: number; // "По стоку 10% прибыли (USD)" column, USD
   importedOverProfitPct?: number; // "Сверх %" column (e.g. 5.43 means +5.43%)
+  // Manual overrides edited inline in the journal table.
+  // Override computed positionInvested when set (number, USD).
+  manualInvested?: number;
+  // Free-form USD value for money transferred in/out on this date.
+  // Displayed only; not factored into derived metrics.
+  transfersUsd?: number;
+  // Original formula text per editable field — preserved so the user sees
+  // their `=1000+500` expression on next focus, not just the evaluated
+  // number. Keys:
+  //   "manualInvested" | "transfersUsd" | `balance:${brokerId}`
+  formulas?: Record<string, string>;
 };
 
 // Capital event — money flowing into or out of the portfolio.
@@ -160,6 +171,7 @@ export type DiaryColumnId =
   | "broker:*" // wildcard; one column per broker is generated dynamically
   | "totalUsd"
   | "investedFromPositions"
+  | "transfersUsd"
   | "target10Pct"
   | "earnedUsd"
   | "strategyPlan"
@@ -176,6 +188,10 @@ export type ColumnVisibilityState = {
   // Map of column id -> visible flag. Missing keys default to true.
   // For broker columns, key is `broker:${brokerId}`.
   visible: Record<string, boolean>;
+  // Ordered list of column ids (excluding "date" which is always pinned first).
+  // Missing ids are appended in natural order. Drag-and-drop in the header
+  // mutates this array.
+  order?: string[];
 };
 
 export const DEFAULT_COLUMN_VISIBILITY: ColumnVisibilityState = {

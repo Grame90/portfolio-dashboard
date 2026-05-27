@@ -29,4 +29,12 @@ export type Settings = {
 export type LiveQuote = {
   current: number;
   previousClose: number;
+  // Yahoo's market state (REGULAR / CLOSED / PRE / POST / …) for the ticker's
+  // primary exchange. Useful so the UI can flag stale ETF prices outside
+  // market hours.
+  marketState?: string;
+  // For commodity ETFs: corresponding futures symbol and its current %
+  // change vs previousClose — the "real" intraday move underlying the ETF.
+  futureSymbol?: string;
+  futurePct?: number;
 };

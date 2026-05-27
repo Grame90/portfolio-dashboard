@@ -29,11 +29,14 @@ function buildColumnDefs(brokers: DiaryBroker[]): ColumnDef[] {
   // Computed
   defs.push(
     { id: "totalUsd", label: "Total USD", group: "Расчёты", defaultOn: true },
+    { id: "deltaDayPct", label: "Δ за день", group: "Расчёты", defaultOn: true },
     { id: "investedFromPositions", label: "Инвестировано", group: "Расчёты", defaultOn: true },
+    { id: "transfersUsd", label: "Переводы", group: "Расчёты", defaultOn: true },
     { id: "target10Pct", label: "Целевая 10%", group: "Расчёты", defaultOn: true },
     { id: "earnedUsd", label: "Заработано USD", group: "Расчёты", defaultOn: true },
     { id: "strategyPlan", label: "План (стратегия)", group: "Расчёты", defaultOn: true },
     { id: "overProfitPct", label: "Сверх %", group: "Расчёты", defaultOn: true },
+    { id: "returnPct", label: "Доходность %", group: "Расчёты", defaultOn: true },
     // Alt currencies
     { id: "balanceEur", label: "Баланс EUR", group: "Валюты", defaultOn: false },
     { id: "balanceBtc", label: "Баланс BTC", group: "Валюты", defaultOn: false },

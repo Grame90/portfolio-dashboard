@@ -8,6 +8,9 @@ import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import AIAnalyzer from "@/components/AIAnalyzer";
 import { importBackupPayload } from "@/lib/portfolioBackup";
+import { writeDiarySnapshotForToday } from "@/lib/diary/auto-snapshot";
+import { usePortfolioStore } from "@/lib/store/usePortfolioStore";
+import { useQuotesStore } from "@/lib/store/useQuotesStore";
 
 interface PageHeaderProps {
   title: string;
@@ -71,6 +74,18 @@ export default function PageHeader({ title, subtitle, showSnapshot = false, titl
       } catch {}
 
       window.dispatchEvent(new CustomEvent("portfolio-snapshot", { detail: { time: now, snap } }));
+
+      // Also write to the financial diary (independent of legacy snapshots-data).
+      // Failure is non-fatal — log and continue.
+      const positions = usePortfolioStore.getState().positions;
+      const quotes = useQuotesStore.getState().liveQuotes;
+      writeDiarySnapshotForToday({
+        positions,
+        quotes,
+        comment: "Фиксация портфеля",
+      }).catch((err) => {
+        console.warn("[Diary] snapshot write failed:", err);
+      });
     }, 800);
   }
 

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Eye, List, BarChart2, History,
   Zap, Target, Settings, TrendingUp,
-  Palette, FileText, MoreHorizontal, X, ScanLine,
+  Palette, FileText, MoreHorizontal, X, ScanLine, BookOpen,
 } from "lucide-react";
 import { useMobile } from "@/lib/useMobile";
 import { useTheme } from "@/components/ThemeProvider";
@@ -24,6 +24,7 @@ const navItems = [
   { href: "/triggers",   icon: Zap,             label: "Триггеры" },
   { href: "/actions",    icon: Target,          label: "Действия" },
   { href: "/strategy",   icon: TrendingUp,      label: "Стратегия" },
+  { href: "/diary",      icon: BookOpen,        label: "Дневник" },
   { href: "/report",     icon: FileText,        label: "Отчёт" },
   { href: "/settings",   icon: Settings,        label: "Настройки" },
 ];

@@ -6,6 +6,7 @@ import { useQuotesStore } from "./store/useQuotesStore";
 import { createClient } from "./supabase/client";
 import useSWR from "swr";
 import { getTradingDayKey, isTradingDayStarted, isMarketHoursNow, loadDayBaseline, saveDayBaseline } from "./tradingDay";
+import { writeDiarySnapshotForToday } from "./diary/auto-snapshot";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url, { cache: "no-store" });
@@ -215,6 +216,13 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("portfolio-chart-history", JSON.stringify(hist.slice(-730)));
     } catch {}
     window.dispatchEvent(new Event("portfolio-snapshot"));
+
+    // Mirror into the financial diary (fire-and-forget; FX rates fetched async).
+    writeDiarySnapshotForToday({
+      positions,
+      quotes: liveQuotes,
+      comment: "Авто-фиксация",
+    }).catch((err) => console.warn("[Diary] auto snapshot failed:", err));
   }, [positions, liveQuotes]);
 
   // 6. Scheduled daily snapshot at 03:00 Istanbul (= 00:00 UTC)
@@ -259,6 +267,14 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem("portfolio-chart-history", JSON.stringify(hist.slice(-730)));
       } catch {}
       window.dispatchEvent(new Event("portfolio-snapshot"));
+
+      // Also mirror into the financial diary at the scheduled 03:00 boundary.
+      writeDiarySnapshotForToday({
+        positions: pos,
+        quotes: lq,
+        comment: "Авто 03:00",
+      }).catch((err) => console.warn("[Diary] scheduled snapshot failed:", err));
+
       schedule();
     }
 

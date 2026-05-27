@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import useSWR from "swr";
+import { Target, Zap } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import {
   LineChart, Line, PieChart, Pie, Cell, BarChart, Bar,
@@ -9,6 +11,21 @@ import {
 } from "recharts";
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
+
+const stratLinkBtn: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  padding: "9px 16px",
+  borderRadius: 9,
+  border: "1px solid var(--border)",
+  background: "var(--bg-card)",
+  color: "var(--text-primary)",
+  fontSize: 13,
+  fontWeight: 600,
+  textDecoration: "none",
+  cursor: "pointer",
+};
 
 const macroFetcher = async (url: string) => {
   const res = await fetch(url);
@@ -297,8 +314,18 @@ export default function StrategyPage() {
       <PageHeader title="СТРАТЕГИЯ И ПЛАН ДЕЙСТВИЙ" subtitle="Стратегия, правила, AI-решения и долгосрочный план" showSnapshot />
 
       <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Quick links to Actions + Triggers (moved here from the sidebar) */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Link href="/actions" style={stratLinkBtn}>
+            <Target size={15} /> План действий
+          </Link>
+          <Link href="/triggers" style={stratLinkBtn}>
+            <Zap size={15} /> Триггеры
+          </Link>
+        </div>
+
         {/* Row 1: Rating + Long-term goal + AI forecast + Goal probability */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1.5fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 230px), 1fr))", gap: 12 }}>
           <div className="card">
             <div className="card-title">Стратегический рейтинг портфеля</div>
             {liveStrategyRating.categories.length === 0 ? (

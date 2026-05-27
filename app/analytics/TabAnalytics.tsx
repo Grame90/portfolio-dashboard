@@ -350,7 +350,7 @@ export default function TabAnalytics() {
   return (
     <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Top metrics */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(7, 1fr)", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 130px), 1fr))", gap: 10 }}>
         {[
           { label: "Общая прибыль (USD)", value: `${app.totalPnl >= 0 ? "+" : ""}${Math.round(app.totalPnl).toLocaleString("en-US")}`, sub: `${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnl >= 0 ? "#22c55e" : "#ef4444" },
           { label: "Средняя доходность (YTD)", value: `${app.totalPnlPct >= 0 ? "+" : ""}${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnlPct >= 0 ? "#22c55e" : "#ef4444" },
@@ -468,7 +468,7 @@ export default function TabAnalytics() {
       </div>
 
       {/* Risk metrics + Stress + Drawdown + Factor */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 12 }}>
         <div className="card">
           <div className="card-title">Распределение по типам активов</div>
           <ResponsiveContainer width="100%" height={130}>

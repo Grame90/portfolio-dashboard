@@ -77,16 +77,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
 
-    const { data } = await supabase
-      .from("user_data")
-      .select("*")
-      .eq("user_id", uid)
-      .single();
+    // Shared dataset: everyone reads the same row via the server endpoint
+    // (service role bypasses RLS). `uid` is unused now — kept for signature.
+    void uid;
+    let data: Record<string, unknown> | null = null;
+    try {
+      const res = await fetch("/api/shared-data");
+      if (res.ok) {
+        const json = await res.json();
+        data = json.data ?? null;
+      }
+    } catch {
+      data = null;
+    }
 
     if (data) {
-      const cloudPositions = data.positions ?? [];
-      const localPositions = safeGet(LS_POSITIONS) ?? [];
+      const row = data as Record<string, unknown>;
+      const cloudPositions = (row.positions as unknown[]) ?? [];
+      const localPositions = (safeGet(LS_POSITIONS) as unknown[]) ?? [];
       const localUpdatedAt = localStorage.getItem(LS_POSITIONS_UPDATED_AT);
+      const cloudUpdatedAt = typeof row.updated_at === "string" ? row.updated_at : undefined;
 
       if (cloudPositions.length === 0 && localPositions.length > 0) {
         // use local
@@ -95,19 +105,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return;
       }
 
-      if (cloudPositions.length > 0 && localPositions.length > 0 && newerLocalData(localUpdatedAt, data.updated_at)) {
+      if (cloudPositions.length > 0 && localPositions.length > 0 && newerLocalData(localUpdatedAt, cloudUpdatedAt)) {
         usePortfolioStore.getState().refreshPositions();
         setTimeout(() => get().syncToCloud(), 3000);
         return;
       }
 
-      if (data.positions) safeSet(LS_POSITIONS, data.positions);
-      if (data.positions) localStorage.setItem(LS_POSITIONS_UPDATED_AT, data.updated_at ?? new Date().toISOString());
-      if (data.settings) safeSet('dashboard-settings', data.settings);
-      
+      if (row.positions) safeSet(LS_POSITIONS, row.positions);
+      if (row.positions) localStorage.setItem(LS_POSITIONS_UPDATED_AT, cloudUpdatedAt ?? new Date().toISOString());
+      if (row.settings) safeSet('dashboard-settings', row.settings);
+
       LS_EXTRA_KEYS.forEach(k => {
         const dbKey = k.replace(/-/g, "_");
-        if (data[dbKey]) safeSet(k, data[dbKey]);
+        if (row[dbKey]) safeSet(k, row[dbKey]);
       });
 
       usePortfolioStore.getState().refreshPositions();
@@ -121,26 +131,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const user = get().user;
     if (!user) return;
     if (!isProduction()) return;
-    
+
     const positionsToSync = safeGet(LS_POSITIONS) ?? [];
     if (positionsToSync.length === 0 && (safeGet('dashboard-settings') === null)) return;
-    
+
+    // Shared dataset: write to the single shared row via the server endpoint.
     try {
-      const { error } = await supabase.from("user_data").upsert({
-        user_id: user.id,
-        positions:        safeGet(LS_POSITIONS) ?? [],
-        settings:         safeGet('dashboard-settings') ?? {},
-        portfolio_chart_history: safeGet("portfolio-chart-history") ?? [],
-        dividends_received:      safeGet("dividends-received") ?? [],
-        snapshots_data:          safeGet("snapshots-data") ?? [],
-        target_structure:        safeGet("target-structure") ?? [],
-        dashboard_notifications: safeGet("dashboard-notifications") ?? [],
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
-      
-      if (error) console.error("[Supabase sync error]", error.message, error.code);
+      const res = await fetch("/api/shared-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          positions:        safeGet(LS_POSITIONS) ?? [],
+          settings:         safeGet('dashboard-settings') ?? {},
+          portfolio_chart_history: safeGet("portfolio-chart-history") ?? [],
+          dividends_received:      safeGet("dividends-received") ?? [],
+          snapshots_data:          safeGet("snapshots-data") ?? [],
+          target_structure:        safeGet("target-structure") ?? [],
+          dashboard_notifications: safeGet("dashboard-notifications") ?? [],
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        console.error("[Shared sync error]", j.error ?? res.status);
+      }
     } catch (e) {
-      console.error("[Supabase sync exception]", e);
+      console.error("[Shared sync exception]", e);
     }
   },
 

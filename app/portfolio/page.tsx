@@ -416,64 +416,6 @@ export default function PortfolioPage() {
   const dailyChangePct = prevTotal > 0 ? ((portfolioTotal - prevTotal) / prevTotal) * 100 : 0;
   const offTargetCount = positions.filter((p) => p.targetShare > 0 && Math.abs(p.share - p.targetShare) > 5).length;
 
-  // User-defined triggers loaded from localStorage (empty by default)
-  const triggerData: Array<{
-    id: number; ticker: string; name: string; type: string;
-    condition: string; currentValue: string; targetValue: string;
-    priority: string; status: string; lastTriggered: string | null; color: string;
-  }> = [];
-
-  // No fake hardcoded alerts — only real user-triggered ones
-  const triggerAlerts: Array<{ id: number; ticker: string; message: string; time: string; severity: string; read: boolean }> = [];
-
-  // Evaluate each trigger against live prices
-  const evaluatedTriggers = triggerData.map((t) => {
-    if (t.status === "Неактивен") return { ...t, liveValue: t.currentValue, fired: false, progress: 0 };
-    const pos = positions.find((p) => p.ticker === t.ticker);
-
-    if (t.type === "Цена ниже") {
-      const target = parseFloat(t.targetValue);
-      const current = pos?.currentPrice ?? 0;
-      const fired = current > 0 && current < target;
-      const progress = current > 0 ? Math.min(100, ((target - current + (target * 0.2)) / (target * 0.2)) * 100) : 0;
-      return { ...t, liveValue: current > 0 ? current.toFixed(2) : "–", fired, progress: Math.max(0, progress) };
-    }
-    if (t.type === "Цена выше") {
-      const target = parseFloat(t.targetValue);
-      const current = pos?.currentPrice ?? 0;
-      const fired = current > 0 && current > target;
-      const progress = current > 0 ? Math.min(100, (current / target) * 100) : 0;
-      return { ...t, liveValue: current > 0 ? current.toFixed(2) : "–", fired, progress };
-    }
-    if (t.type === "Просадка %") {
-      const target = parseFloat(t.targetValue);
-      const drawdown = pos && pos.avgPrice > 0
-        ? ((pos.currentPrice - pos.avgPrice) / pos.avgPrice) * 100
-        : 0;
-      const fired = drawdown < -target;
-      const progress = Math.min(100, (Math.abs(Math.min(0, drawdown)) / target) * 100);
-      return { ...t, liveValue: `${drawdown.toFixed(2)}%`, fired, progress };
-    }
-    if (t.type === "Просадка портфеля") {
-      const target = parseFloat(t.targetValue);
-      const fired = dailyChangePct < -target;
-      const progress = Math.min(100, (Math.abs(Math.min(0, dailyChangePct)) / target) * 100);
-      return { ...t, liveValue: `${dailyChangePct.toFixed(2)}%`, fired, progress };
-    }
-    if (t.type === "Рост %") {
-      const target = parseFloat(t.targetValue);
-      const growth = pos && pos.previousClose > 0
-        ? ((pos.currentPrice - pos.previousClose) / pos.previousClose) * 100
-        : 0;
-      const fired = growth > target;
-      const progress = Math.min(100, (Math.max(0, growth) / target) * 100);
-      return { ...t, liveValue: `${growth.toFixed(2)}%`, fired, progress };
-    }
-    return { ...t, liveValue: t.currentValue, fired: false, progress: 0 };
-  });
-
-  const firedCount = evaluatedTriggers.filter((t) => t.fired).length;
-  const activeCount = evaluatedTriggers.filter((t) => t.status === "Активен").length;
   const profitablePct = positions.filter((p) => p.type !== "Кэш").length > 0
     ? (positions.filter((p) => p.pnl > 0).length / positions.filter((p) => p.type !== "Кэш").length) * 100
     : 0;
@@ -611,8 +553,9 @@ export default function PortfolioPage() {
       <PageHeader title="ПОРТФЕЛЬ" subtitle="Главная сводка и управление портфелем" showSnapshot titleBadge={<DailyAlertBadge />} />
 
       <div style={{ padding: isMobile ? "12px" : "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-        {/* Row 1: Summary */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1.5fr 1.2fr 1fr 1fr", gap: 12 }}>
+        {/* Row 1: Summary — fluid auto-fit so cards reflow at any width
+            (5-across desktop → 3 tablet → 2 phone) without hard breakpoints. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))", gap: 12 }}>
           {/* Total */}
           <div className="card">
             <div className="card-title">Общая стоимость портфеля</div>
@@ -1202,8 +1145,8 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        {/* Row 3: Buy ladder + Triggers + Snapshots */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
+        {/* Row 3: Buy ladder + Snapshots — fluid: 3-across desktop, wraps on smaller. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 12 }}>
           {(() => {
             const allTickers = positions.filter(p => p.type !== "Кэш" && p.value >= 10);
             const selectedPositions = allTickers.filter(p => ladderTickers.includes(p.ticker));
@@ -1290,135 +1233,6 @@ export default function PortfolioPage() {
               </div>
             );
           })()}
-
-          <div className="card" style={{ display: "flex", flexDirection: "column" }}>
-            {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <div className="card-title" style={{ marginBottom: 0 }}>Триггеры действий</div>
-              <div style={{ display: "flex", gap: 5 }}>
-                {firedCount > 0 && (
-                  <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "rgba(239,68,68,0.15)", color: "#ef4444", fontWeight: 700 }}>
-                    ● {firedCount} сработал{firedCount > 1 ? "о" : ""}
-                  </span>
-                )}
-                <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 4, background: "rgba(34,197,94,0.1)", color: "#22c55e", fontWeight: 600 }}>
-                  {activeCount} активных
-                </span>
-              </div>
-            </div>
-
-            {/* Unread alert banner */}
-            {triggerAlerts.filter((a) => !a.read).length > 0 && (
-              <div style={{ marginBottom: 8, padding: "7px 10px", background: "rgba(239,68,68,0.08)", border: "1px solid #ef444435", borderRadius: 7 }}>
-                {triggerAlerts.filter((a) => !a.read).map((a) => (
-                  <div key={a.id} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 10 }}>
-                    <span style={{ color: "#ef4444", fontSize: 14, lineHeight: 1 }}>!</span>
-                    <span style={{ color: "#ef4444", fontWeight: 700 }}>{a.ticker}</span>
-                    <span style={{ color: "var(--text-secondary)" }}>{a.message}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Trigger list */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-              {evaluatedTriggers.map((t) => {
-                const priorityColor: Record<string, string> = {
-                  "Критический": "#ef4444", "Высокий": "#f59e0b", "Средний": "#7c3aed", "Низкий": "#94a3b8",
-                };
-                const isInactive = t.status === "Неактивен";
-                const isClose = !t.fired && t.progress > 60;
-
-                // Human-readable "if → then" explanation
-                const actionMap: Record<string, string> = {
-                  "Цена ниже":        "покупать",
-                  "Цена выше":        "фиксировать",
-                  "Просадка %":       "стоп / докупить",
-                  "Просадка портфеля":"сократить риск",
-                  "Рост %":           "частично продать",
-                  "Объём":            "проверить позицию",
-                };
-                const actionHint = actionMap[t.type] ?? "действовать";
-
-                // Distance to trigger as formatted string
-                const distLabel = (() => {
-                  if (t.fired) return "УСЛОВИЕ ВЫПОЛНЕНО";
-                  if (isInactive) return "выключен";
-                  const pct = Math.max(0, 100 - t.progress);
-                  return `до цели ${pct.toFixed(0)}%`;
-                })();
-
-                const barColor = t.fired ? "#ef4444" : isClose ? "#f59e0b" : "#3b82f6";
-
-                return (
-                  <div key={t.id} style={{
-                    borderRadius: 8,
-                    border: `1px solid ${t.fired ? "#ef444450" : isClose ? "#f59e0b30" : "var(--border)"}`,
-                    background: t.fired ? "rgba(239,68,68,0.06)" : isClose ? "rgba(245,158,11,0.04)" : "var(--bg-secondary)",
-                    opacity: isInactive ? 0.5 : 1,
-                    overflow: "hidden",
-                  }}>
-                    {/* Top: ticker + what to watch + status */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px 4px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <div style={{ width: 22, height: 22, borderRadius: "50%", background: t.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 700, color: "white", flexShrink: 0 }}>
-                          {t.ticker.slice(0, 3)}
-                        </div>
-                        <div>
-                          <span style={{ fontSize: 11, fontWeight: 700 }}>{t.ticker}</span>
-                          <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 5 }}>{t.type}</span>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                        <span style={{ fontSize: 9, color: priorityColor[t.priority] ?? "#94a3b8", fontWeight: 600 }}>
-                          {t.priority}
-                        </span>
-                        {t.fired ? (
-                          <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "#ef4444", color: "white", fontWeight: 700, letterSpacing: "0.04em" }}>
-                            СРАБОТАЛ
-                          </span>
-                        ) : isInactive ? (
-                          <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "var(--border)", color: "#94a3b8", fontWeight: 600 }}>ВЫКЛ</span>
-                        ) : (
-                          <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 4, background: "rgba(34,197,94,0.12)", color: "#22c55e", fontWeight: 600 }}>ЖДЁМ</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Middle: if → then readable line */}
-                    {!isInactive && (
-                      <div style={{ padding: "0 10px 5px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ fontSize: 10, color: "var(--text-secondary)" }}>
-                          Если{" "}
-                          <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{t.condition}</span>
-                          {" "}→{" "}
-                          <span style={{ color: "var(--accent-light)", fontWeight: 600 }}>{actionHint}</span>
-                        </div>
-                        <div style={{ display: "flex", gap: 10, fontSize: 10 }}>
-                          <span style={{ color: "var(--text-secondary)" }}>
-                            Сейчас: <span style={{ fontWeight: 700, color: t.fired ? "#ef4444" : "var(--text-primary)" }}>{t.liveValue}</span>
-                          </span>
-                          <span style={{ color: "var(--text-secondary)" }}>
-                            Цель: <span style={{ fontWeight: 700, color: "#f59e0b" }}>{t.targetValue}</span>
-                          </span>
-                          <span style={{ fontWeight: 600, color: t.fired ? "#ef4444" : isClose ? "#f59e0b" : "var(--text-secondary)" }}>
-                            {distLabel}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Bottom: progress bar */}
-                    {!isInactive && (
-                      <div style={{ height: 3, background: "var(--border)" }}>
-                        <div style={{ height: "100%", width: `${t.progress}%`, background: barColor, transition: "width 0.5s ease" }} />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
 
           <div className="card" style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>

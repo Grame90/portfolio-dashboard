@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { connections } from "@/lib/mockData";
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import { BACKUP_KEYS, RESET_ALL_KEYS, importBackupPayload } from "@/lib/portfolioBackup";
 import { usePortfolioStore } from "@/lib/store/usePortfolioStore";
-import { createClient } from "@/lib/supabase/client";
 
 const settingsTabs = ["ПОДКЛЮЧЕНИЯ", "УВЕДОМЛЕНИЯ", "РИСК-ПРОФИЛЬ", "ПОРТФЕЛЬ", "ДАННЫЕ", "АККАУНТ"];
 
@@ -197,13 +197,10 @@ export default function SettingsPage() {
     // 2. Reset in-memory zustand store so UI flips to empty immediately
     usePortfolioStore.getState().clearPositions();
 
-    // 3. Wipe cloud row for the current user (so data doesn't re-download on
-    //    next load via DashboardProvider → loadFromCloud).
+    // 3. Wipe the SHARED cloud row (data is unified across all users) so it
+    //    doesn't re-download on next load via DashboardProvider → loadFromCloud.
     try {
-      if (app.user?.id) {
-        const supabase = createClient();
-        await supabase.from("user_data").delete().eq("user_id", app.user.id);
-      }
+      await fetch("/api/shared-data", { method: "DELETE" });
     } catch {}
 
     setSaved("Данные удалены — страница перезагрузится");
@@ -736,6 +733,24 @@ export default function SettingsPage() {
                     Загрузить файл (.json)
                   </button>
                   <input ref={importRef} type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
+                </div>
+                <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Импорт отчёта брокера</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+                    Распознать сделки из PDF/текста отчёта брокера (IBKR, Midas, T-Invest и др.).
+                  </div>
+                  <Link href="/import" style={{ display: "inline-block", padding: "9px 20px", borderRadius: 8, border: "1px solid var(--accent)", cursor: "pointer", fontSize: 13, fontWeight: 600, background: "transparent", color: "var(--accent)", textDecoration: "none" }}>
+                    Открыть импорт отчёта →
+                  </Link>
+                </div>
+                <div style={{ padding: "14px 16px", borderRadius: 10, background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Скан из фото</div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+                    Распознать позиции по скриншоту/фото портфеля из приложения брокера.
+                  </div>
+                  <Link href="/scan" style={{ display: "inline-block", padding: "9px 20px", borderRadius: 8, border: "1px solid var(--accent)", cursor: "pointer", fontSize: 13, fontWeight: 600, background: "transparent", color: "var(--accent)", textDecoration: "none" }}>
+                    Открыть скан из фото →
+                  </Link>
                 </div>
                 {saved && <div style={{ fontSize: 12, color: saved.includes("✗") ? "#ef4444" : "#22c55e" }}>{saved}</div>}
               </div>

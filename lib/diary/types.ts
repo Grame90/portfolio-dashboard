@@ -163,8 +163,6 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   calendarDaysPerYear: 365,
 };
 
-export type Period = "day" | "week" | "month" | "year";
-
 // UI column visibility — persisted separately, drives the journal table.
 export type DiaryColumnId =
   | "date"

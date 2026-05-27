@@ -23,7 +23,6 @@ import {
   EditableBalanceCell,
   EditableCommentCell,
   EditableUsdCell,
-  FormattedAmount,
 } from "./EditableCells";
 import ColumnVisibilityMenu from "./ColumnVisibilityMenu";
 

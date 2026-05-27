@@ -49,6 +49,8 @@ export default function HistoryPage() {
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [lsHistory, setLsHistory] = useState<{ date: string; value: number }[]>([]);
   const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[] }>>({});
+  const [snapExpanded, setSnapExpanded] = useState(false);
+  const [opsExpanded, setOpsExpanded] = useState(false);
 
   const liveTotal = app.portfolioTotal;
   const livePnl   = app.totalPnl;
@@ -207,28 +209,36 @@ export default function HistoryPage() {
     }));
   }, [realPositions, liveQuotes]);
 
-  // Operations: generated from current positions as initial purchases
+  // Operations: prefer an explicit operations-log; otherwise derive initial
+  // "Покупка" rows from each position's real purchaseDate. Sorted newest-first.
   const operations = useMemo((): Operation[] => {
     try {
       const raw = localStorage.getItem("operations-log");
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Operation[];
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
-    // Fall back: generate from current positions
-    const today = new Date();
+    // Derive from current positions using their actual purchase date.
+    const fmt = (iso: string): string => {
+      if (!iso) return "—";
+      const [y, m, d] = iso.split("-");
+      return d && m && y ? `${d}.${m}.${y}` : iso;
+    };
     return realPositions
-      .filter(p => p.type !== "Кэш")
-      .map((p, i) => {
-        const d = new Date(today);
-        d.setDate(d.getDate() - i);
-        return {
-          date: d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }),
-          ticker: p.ticker,
-          action: "Покупка",
-          qty: p.qty,
-          price: p.avgPrice,
-          sum: -(Math.round(p.qty * p.avgPrice)),
-        };
-      });
+      .filter((p) => p.type !== "Кэш")
+      .map((p) => ({
+        date: fmt(p.purchaseDate),
+        // raw ISO kept for sorting
+        _sort: p.purchaseDate || "",
+        ticker: p.ticker,
+        action: "Покупка",
+        qty: p.qty,
+        price: p.avgPrice,
+        sum: -(Math.round(p.qty * p.avgPrice)),
+      }))
+      .sort((a, b) => (b._sort || "").localeCompare(a._sort || ""))
+      .map(({ _sort, ...op }) => op);
   }, [realPositions]);
 
   // Recommended actions from real portfolio
@@ -632,7 +642,7 @@ export default function HistoryPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {snapshots.slice(0, 8).map((s, i) => (
+                    {(snapExpanded ? snapshots : snapshots.slice(0, 8)).map((s, i) => (
                       <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
                         <td style={{ padding: "7px 8px" }}>{s.date}</td>
                         <td style={{ padding: "7px 8px", color: "var(--text-secondary)" }}>{s.time}</td>
@@ -649,7 +659,12 @@ export default function HistoryPage() {
                 </table>
                 {snapshots.length > 8 && (
                   <div style={{ textAlign: "center", marginTop: 8 }}>
-                    <span style={{ color: "var(--accent-light)", fontSize: 12 }}>Ещё {snapshots.length - 8} записей</span>
+                    <button
+                      onClick={() => setSnapExpanded(o => !o)}
+                      style={{ background: "none", border: "none", color: "var(--accent-light)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "4px 8px" }}
+                    >
+                      {snapExpanded ? "Свернуть ▲" : `Ещё ${snapshots.length - 8} записей ▼`}
+                    </button>
                   </div>
                 )}
               </>
@@ -674,7 +689,7 @@ export default function HistoryPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {operations.slice(0, 8).map((o, i) => (
+                    {(opsExpanded ? operations : operations.slice(0, 8)).map((o, i) => (
                       <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
                         <td style={{ padding: "7px 8px", color: "var(--text-secondary)" }}>{o.date}</td>
                         <td style={{ padding: "7px 8px", fontWeight: 700, color: "var(--accent-light)" }}>{o.ticker}</td>
@@ -692,7 +707,12 @@ export default function HistoryPage() {
                 </table>
                 {operations.length > 8 && (
                   <div style={{ textAlign: "center", marginTop: 8 }}>
-                    <span style={{ color: "var(--accent-light)", fontSize: 12 }}>Ещё {operations.length - 8} операций</span>
+                    <button
+                      onClick={() => setOpsExpanded(o => !o)}
+                      style={{ background: "none", border: "none", color: "var(--accent-light)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "4px 8px" }}
+                    >
+                      {opsExpanded ? "Свернуть ▲" : `Ещё ${operations.length - 8} операций ▼`}
+                    </button>
                   </div>
                 )}
               </>

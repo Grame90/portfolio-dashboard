@@ -137,7 +137,7 @@ const FUNCTIONS: Record<string, (args: Arg[], ctx: FormulaContext) => number | u
     return Math.max(...vals);
   },
   COUNT: (args, ctx) => flattenArgs(args, ctx).length,
-  IF: (args, ctx) => {
+  IF: (args, _ctx) => {
     // IF(cond, then, else) — cond evaluated as non-zero truthy.
     if (args.length < 2) return undefined;
     const cond = args[0];

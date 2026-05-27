@@ -215,6 +215,7 @@ export default function OverviewPage() {
   // Dividends
   const [receivedDividends, setReceivedDividends] = useState<ReceivedDividend[]>([]);
   const [showDivModal, setShowDivModal] = useState(false);
+  const [divExpanded, setDivExpanded] = useState(false);
   const [divForm, setDivForm] = useState({ ticker: "", amountPerShare: "", shares: "", date: new Date().toISOString().slice(0, 10), note: "" });
 
   useEffect(() => { setReceivedDividends(loadDividends()); }, []);
@@ -456,7 +457,7 @@ export default function OverviewPage() {
 
       <div style={{ padding: isMobile ? "12px" : "20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Row 1: Metrics cards */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1.4fr 1fr 1fr 1fr 1fr 1.1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))", gap: 10 }}>
           {/* Total */}
           <div className="card" style={{ borderLeft: "3px solid var(--accent)", background: "linear-gradient(135deg, var(--bg-card-hover), var(--bg-card))" }}>
             <div className="card-title">Общая стоимость портфеля</div>
@@ -636,7 +637,7 @@ export default function OverviewPage() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {receivedDividends.slice(0, 5).map(d => (
+                {(divExpanded ? receivedDividends : receivedDividends.slice(0, 5)).map(d => (
                   <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
                     <div>
                       <span style={{ fontWeight: 700, color: "var(--accent-light)", marginRight: 6 }}>{d.ticker}</span>
@@ -647,7 +648,12 @@ export default function OverviewPage() {
                   </div>
                 ))}
                 {receivedDividends.length > 5 && (
-                  <div style={{ fontSize: 11, color: "var(--accent-light)", textAlign: "center" }}>Ещё {receivedDividends.length - 5} записей</div>
+                  <button
+                    onClick={() => setDivExpanded(o => !o)}
+                    style={{ background: "none", border: "none", fontSize: 11, color: "var(--accent-light)", textAlign: "center", cursor: "pointer", fontWeight: 600, padding: "4px 0" }}
+                  >
+                    {divExpanded ? "Свернуть ▲" : `Ещё ${receivedDividends.length - 5} записей ▼`}
+                  </button>
                 )}
               </div>
             )}
@@ -844,7 +850,7 @@ export default function OverviewPage() {
         </div>
 
         {/* Row 3: Leaders + Sectors + Risk gauge */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 12 }}>
           <div className="card">
             <div className="card-title">Лидеры роста сегодня</div>
             {!quotesLoaded ? (

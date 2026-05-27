@@ -158,27 +158,30 @@ body {
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
+  border-radius: 10px;
+  /* Fluid padding: tight on small screens, comfortable on desktop. */
+  padding: clamp(10px, 1.1vw, 15px);
 }
 
 .card-title {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   color: var(--accent-light);
   text-transform: uppercase;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .metric-value {
-  font-size: 28px;
+  /* Scales between mobile and desktop without per-page media queries. */
+  font-size: clamp(18px, 2vw, 26px);
   font-weight: 700;
   color: var(--text-primary);
+  line-height: 1.15;
 }
 
 .metric-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
 }
 
@@ -285,16 +288,24 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Tablet / small laptop: trim padding + gaps so dense dashboards fit. */
+@media (max-width: 1024px) {
+  .card { padding: 12px; }
+  .card-title { margin-bottom: 8px; }
+}
+
 @media (max-width: 767px) {
   /* Prevent ANY horizontal overflow */
   html, body { overflow-x: hidden; max-width: 100vw; }
   * { max-width: 100%; box-sizing: border-box; }
 
   /* Metric value font size on small screens */
-  .metric-value { font-size: 20px !important; }
+  .metric-value { font-size: 18px !important; }
 
-  /* Cards slightly smaller padding on mobile */
-  .card { padding: 12px !important; }
+  /* Cards: compact padding + tighter title on mobile */
+  .card { padding: 10px !important; border-radius: 9px; }
+  .card-title { font-size: 10px; margin-bottom: 7px; letter-spacing: 0.05em; }
+  .metric-label { font-size: 10px; }
 
   /* Tabs wrap on mobile */
   .tab-btn { padding: 6px 10px; font-size: 11px; }

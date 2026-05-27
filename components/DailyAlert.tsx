@@ -1,9 +1,32 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { mutate } from "swr";
 import { useApp } from "@/lib/useApp";
 
 type AlertLevel = "green" | "yellow" | "red";
+
+type DipSignal = "buy" | "weak" | "none";
+interface DipInstrument {
+  ticker: string;
+  price: number;
+  dailyChangePct: number;
+  dipThreshold: number;
+  dipReached: boolean;
+  rsi14: number | null;
+  ma200: number | null;
+  aboveMa200: boolean | null;
+  allocPct: number;
+  signal: DipSignal;
+  reason: string;
+}
+interface MarketDip {
+  vix: number | null;
+  vixZone: "risk-on" | "neutral" | "risk-off" | "unknown";
+  overall: DipSignal;
+  instruments: DipInstrument[];
+  updatedAt: number;
+}
 
 interface AlertItem {
   icon: string;
@@ -265,6 +288,29 @@ export function DailyAlertBadge() {
   const app = useApp();
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Force-refresh all underlying data feeding the indicators: SWR caches for
+  // /api/quotes and /api/crypto + positions from localStorage. Click of the
+  // refresh icon in the popover.
+  async function handleRefresh(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        mutate((key) =>
+          typeof key === "string" &&
+          (key.startsWith("/api/quotes") || key.startsWith("/api/crypto")),
+        ),
+        Promise.resolve(app.refreshPositions?.()),
+        loadDip(),
+      ]);
+    } finally {
+      // brief delay so the spinner is visible even on fast networks
+      setTimeout(() => setRefreshing(false), 350);
+    }
+  }
   // Delay close so the cursor can cross the small gap between badge and popover
   // without the popover snapping shut mid-traversal.
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -278,6 +324,26 @@ export function DailyAlertBadge() {
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
 
   useEffect(() => { setMounted(true); }, []);
+
+  // Market Dip Indicator — fetched from /api/market-dip while the popover is
+  // open (and on manual refresh). Holds QQQ/SOXX/SMH dip signals + VIX.
+  const [dip, setDip] = useState<MarketDip | null>(null);
+  const [dipLoading, setDipLoading] = useState(false);
+  async function loadDip() {
+    setDipLoading(true);
+    try {
+      const res = await fetch("/api/market-dip");
+      if (res.ok) setDip(await res.json());
+    } catch {
+      /* keep last */
+    } finally {
+      setDipLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (open && !dip && !dipLoading) loadDip();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Live ticker for countdown to next planned check. Only runs while popover is
   // open to avoid useless re-renders.
@@ -527,9 +593,32 @@ export function DailyAlertBadge() {
             <span style={{ fontSize: 11, fontWeight: 800, color: c.dot, letterSpacing: "0.07em" }}>
               КРИЗИС-АЛЕРТ
             </span>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Обновить данные сейчас"
+              style={{
+                marginLeft: "auto",
+                width: 22, height: 22, borderRadius: 6,
+                border: "1px solid var(--border)", background: "transparent",
+                color: "var(--text-muted)", cursor: refreshing ? "wait" : "pointer",
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, padding: 0,
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-block",
+                  transition: "transform 0.1s linear",
+                  animation: refreshing ? "spin 0.8s linear infinite" : undefined,
+                }}
+              >
+                ↻
+              </span>
+            </button>
             <span style={{
               fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20,
-              background: c.dot, color: "white", marginLeft: "auto",
+              background: c.dot, color: "white",
             }}>
               {c.label.toUpperCase()}
             </span>
@@ -568,6 +657,79 @@ export function DailyAlertBadge() {
 
           <div style={{ height: 1, background: c.border, marginBottom: 10 }} />
 
+          {/* Market Dip Indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              Сигнал на вход (dip)
+            </span>
+            {dip && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, padding: "1px 7px", borderRadius: 20, marginLeft: "auto",
+                background: dipBg(dip.overall), color: dipColor(dip.overall),
+              }}>
+                {dipLabel(dip.overall)}
+              </span>
+            )}
+          </div>
+
+          {dipLoading && !dip ? (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10 }}>Загрузка сигналов…</div>
+          ) : dip ? (
+            <div style={{ marginBottom: 10 }}>
+              {/* VIX row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, marginBottom: 6 }}>
+                <span style={{ color: "var(--text-secondary)" }}>VIX (страх рынка)</span>
+                <span style={{ fontWeight: 700, color: vixColor(dip.vixZone) }}>
+                  {dip.vix !== null ? dip.vix.toFixed(1) : "—"}
+                  <span style={{ fontSize: 9, marginLeft: 5, color: "var(--text-muted)" }}>{vixZoneLabel(dip.vixZone)}</span>
+                </span>
+              </div>
+              {/* Per-instrument rows */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {dip.instruments.map((ins) => (
+                  <div key={ins.ticker} style={{
+                    border: `1px solid ${dipColor(ins.signal)}30`,
+                    background: `${dipBg(ins.signal)}`,
+                    borderRadius: 7, padding: "6px 8px",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700 }}>
+                        {ins.ticker}
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, marginLeft: 6,
+                          color: ins.dailyChangePct < 0 ? "#ef4444" : "#22c55e",
+                        }}>
+                          {ins.dailyChangePct > 0 ? "+" : ""}{ins.dailyChangePct.toFixed(2)}%
+                        </span>
+                        <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 5 }}>
+                          порог {ins.dipThreshold}%
+                        </span>
+                      </span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, padding: "1px 7px", borderRadius: 20,
+                        background: dipBg(ins.signal), color: dipColor(ins.signal),
+                      }}>
+                        {dipLabel(ins.signal)}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 10, fontSize: 9, color: "var(--text-muted)", marginTop: 3 }}>
+                      <span>RSI {ins.rsi14 !== null ? ins.rsi14.toFixed(0) : "—"}</span>
+                      <span>{ins.aboveMa200 === null ? "MA200 —" : ins.aboveMa200 ? "выше MA200" : "ниже MA200"}</span>
+                      {ins.signal === "buy" && <span style={{ color: "#22c55e" }}>вход {ins.allocPct}% капитала</span>}
+                    </div>
+                    {ins.signal !== "none" && (
+                      <div style={{ fontSize: 9, color: "var(--text-secondary)", marginTop: 2 }}>{ins.reason}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10 }}>Нет данных по сигналам</div>
+          )}
+
+          <div style={{ height: 1, background: c.border, marginBottom: 10 }} />
+
           {/* Recommendations */}
           <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
             Рекомендации
@@ -594,6 +756,29 @@ export function DailyAlertBadge() {
           </div>
         </div>
       )}
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
+}
+
+// ── Market Dip signal helpers ───────────────────────────────────────────
+
+function dipLabel(s: DipSignal): string {
+  return s === "buy" ? "✅ ПОКУПКА" : s === "weak" ? "⚠️ СЛАБО" : "🚫 ЖДЁМ";
+}
+function dipColor(s: DipSignal): string {
+  return s === "buy" ? "#22c55e" : s === "weak" ? "#f59e0b" : "#94a3b8";
+}
+function dipBg(s: DipSignal): string {
+  return s === "buy"
+    ? "rgba(34,197,94,0.12)"
+    : s === "weak"
+    ? "rgba(245,158,11,0.12)"
+    : "rgba(148,163,184,0.10)";
+}
+function vixZoneLabel(z: MarketDip["vixZone"]): string {
+  return z === "risk-on" ? "risk-on" : z === "neutral" ? "neutral" : z === "risk-off" ? "risk-off" : "—";
+}
+function vixColor(z: MarketDip["vixZone"]): string {
+  return z === "risk-on" ? "#22c55e" : z === "neutral" ? "#f59e0b" : z === "risk-off" ? "#ef4444" : "#94a3b8";
 }

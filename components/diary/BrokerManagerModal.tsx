@@ -168,7 +168,7 @@ export default function BrokerManagerModal({
                     <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontWeight: 700, fontSize: 13 }}>{b.label}</span>
-                        <span style={tagStyle(b.currency)}>{b.currency}</span>
+                        <span style={tagStyle}>{b.currency}</span>
                         {b.isCrypto && <span style={cryptoTag}>крипта</span>}
                       </div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -477,14 +477,14 @@ const smallIcon: React.CSSProperties = {
   fontSize: 12,
 };
 
-const tagStyle = (currency: BrokerCurrency): React.CSSProperties => ({
+const tagStyle: React.CSSProperties = {
   fontSize: 10,
   fontWeight: 700,
   padding: "2px 6px",
   borderRadius: 4,
   background: "rgba(124,58,237,0.15)",
   color: "var(--accent-light)",
-});
+};
 
 const cryptoTag: React.CSSProperties = {
   fontSize: 10,

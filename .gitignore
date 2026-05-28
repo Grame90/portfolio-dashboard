@@ -1,3 +1,8 @@
 .vercel
 .env*.local
 .gstack/
+.next/
+node_modules/
+*.tsbuildinfo
+.vercel/
+.DS_Store

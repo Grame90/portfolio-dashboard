@@ -192,15 +192,28 @@ export default function PortfolioPage() {
   
 
   // Load / save column visibility
+  // Guards prevent the auto-save effects from running before localStorage
+  // is loaded (which would overwrite saved state with defaults on mount).
+  const colsHydrated = useRef(false);
+  const orderHydrated = useRef(false);
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem("portfolio-cols");
-      if (saved) setVisibleCols(new Set(JSON.parse(saved) as ColId[]));
+      if (saved) {
+        const next = new Set(JSON.parse(saved) as ColId[]);
+        // One-time migration: ensure "День $" / "День %" appear by default for
+        // users with a previously saved column set that pre-dated these defaults.
+        next.add("dayUsd");
+        next.add("dayPct");
+        setVisibleCols(next);
+      }
     } catch {}
+    colsHydrated.current = true;
   }, []);
 
 
-  // Load / save column order
+  // Load column order
   useEffect(() => {
     try {
       const saved = localStorage.getItem("portfolio-col-order");
@@ -212,7 +225,20 @@ export default function PortfolioPage() {
         setColOrder(merged);
       }
     } catch {}
+    orderHydrated.current = true;
   }, []);
+
+  // Auto-save column visibility on change (after hydration)
+  useEffect(() => {
+    if (!colsHydrated.current) return;
+    try { localStorage.setItem("portfolio-cols", JSON.stringify([...visibleCols])); } catch {}
+  }, [visibleCols]);
+
+  // Auto-save column order on change (after hydration)
+  useEffect(() => {
+    if (!orderHydrated.current) return;
+    try { localStorage.setItem("portfolio-col-order", JSON.stringify(colOrder)); } catch {}
+  }, [colOrder]);
 
   const [colOrderSaved, setColOrderSaved] = useState(false);
 

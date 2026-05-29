@@ -55,6 +55,8 @@ const HEADER_COLUMNS: { label: string; key: keyof Position | "" }[] = [
   { label: "Ср.цена",          key: "avgPrice" },
   { label: "Тек.цена",         key: "currentPrice" },
   { label: "Стоимость",        key: "value" },
+  { label: "День $",           key: "" },
+  { label: "День %",           key: "" },
   { label: "Прибыль / Убыток", key: "pnl" },
   { label: "Доля",             key: "share" },
   { label: "",                 key: "" },
@@ -204,6 +206,22 @@ export function PositionsTable({
                   {p.live && lastTick[p.id] === "down" && <span style={{ fontSize: 9, marginLeft: 2 }}>▼</span>}
                 </td>
                 <td style={{ padding: "7px 8px", fontWeight: 700 }}>{p.value.toLocaleString("en-US")}</td>
+                {(() => {
+                  const hasPrev = p.previousClose > 0 && p.live;
+                  const dayUsd = hasPrev ? Math.round(p.qty * (p.currentPrice - p.previousClose)) : 0;
+                  const dayPct = hasPrev ? ((p.currentPrice - p.previousClose) / p.previousClose) * 100 : 0;
+                  const dayColor = dayUsd >= 0 ? "#22c55e" : "#ef4444";
+                  return (
+                    <>
+                      <td style={{ padding: "7px 8px", color: hasPrev ? dayColor : "var(--text-muted)", fontWeight: 600 }}>
+                        {hasPrev ? `${dayUsd >= 0 ? "+" : ""}${dayUsd.toLocaleString("en-US")}` : "—"}
+                      </td>
+                      <td style={{ padding: "7px 8px", color: hasPrev ? dayColor : "var(--text-muted)" }}>
+                        {hasPrev ? `${dayPct >= 0 ? "+" : ""}${dayPct.toFixed(2)}%` : "—"}
+                      </td>
+                    </>
+                  );
+                })()}
                 <td style={{ padding: "6px 8px" }}>
                   {p.pnl === 0 ? (
                     <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
@@ -258,20 +276,40 @@ export function PositionsTable({
               </tr>
             ))}
             {filteredCount === 0 && (
-              <tr><td colSpan={13} style={{ padding: 24, textAlign: "center", color: "var(--text-secondary)" }}>Нет позиций в этой категории</td></tr>
+              <tr><td colSpan={15} style={{ padding: 24, textAlign: "center", color: "var(--text-secondary)" }}>Нет позиций в этой категории</td></tr>
             )}
-            <tr style={{ fontWeight: 700, background: "var(--bg-secondary)" }}>
-              <td colSpan={8} style={{ padding: "8px", color: "var(--text-secondary)", fontSize: 12 }}>ИТОГО</td>
-              <td style={{ padding: "8px" }}>{Math.round(total).toLocaleString("en-US")}</td>
-              <td style={{ padding: "8px", color: totalPnl >= 0 ? "#22c55e" : "#ef4444" }}>
-                {totalPnl >= 0 ? "+" : ""}{totalPnl.toLocaleString("en-US")}
-              </td>
-              <td style={{ padding: "8px", color: totalPnlPct >= 0 ? "#22c55e" : "#ef4444" }}>
-                {totalPnlPct >= 0 ? "+" : ""}{totalPnlPct.toFixed(2)}%
-              </td>
-              <td style={{ padding: "8px" }}>100.00%</td>
-              <td />
-            </tr>
+            {(() => {
+              const totalDayUsd = sorted.reduce((s, p) => {
+                if (!p.live || p.previousClose <= 0) return s;
+                return s + Math.round(p.qty * (p.currentPrice - p.previousClose));
+              }, 0);
+              const prevTotal = sorted.reduce((s, p) => {
+                if (!p.live || p.previousClose <= 0) return s + p.value;
+                return s + p.qty * p.previousClose;
+              }, 0);
+              const totalDayPct = prevTotal > 0 ? (totalDayUsd / prevTotal) * 100 : 0;
+              const dayColor = totalDayUsd >= 0 ? "#22c55e" : "#ef4444";
+              return (
+                <tr style={{ fontWeight: 700, background: "var(--bg-secondary)" }}>
+                  <td colSpan={8} style={{ padding: "8px", color: "var(--text-secondary)", fontSize: 12 }}>ИТОГО</td>
+                  <td style={{ padding: "8px" }}>{Math.round(total).toLocaleString("en-US")}</td>
+                  <td style={{ padding: "8px", color: dayColor }}>
+                    {totalDayUsd >= 0 ? "+" : ""}{totalDayUsd.toLocaleString("en-US")}
+                  </td>
+                  <td style={{ padding: "8px", color: dayColor }}>
+                    {totalDayPct >= 0 ? "+" : ""}{totalDayPct.toFixed(2)}%
+                  </td>
+                  <td style={{ padding: "8px", color: totalPnl >= 0 ? "#22c55e" : "#ef4444" }}>
+                    {totalPnl >= 0 ? "+" : ""}{totalPnl.toLocaleString("en-US")}
+                  </td>
+                  <td style={{ padding: "8px", color: totalPnlPct >= 0 ? "#22c55e" : "#ef4444" }}>
+                    {totalPnlPct >= 0 ? "+" : ""}{totalPnlPct.toFixed(2)}%
+                  </td>
+                  <td style={{ padding: "8px" }}>100.00%</td>
+                  <td />
+                </tr>
+              );
+            })()}
           </tbody>
         </table>
       </div>

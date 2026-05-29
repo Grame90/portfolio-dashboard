@@ -98,7 +98,7 @@ export default function OverviewPage() {
   const liveDailyChangePct = app.dailyChangePct;
   const liveCost = app.totalCost || 0;
 
-  const { mergedTimeline } = usePortfolioHistory(app.positions, history, livePortfolioTotal, liveCost);
+  const { mergedTimeline, histData } = usePortfolioHistory(app.positions, history, livePortfolioTotal, liveCost);
 
   // Live risk score computed from real positions
   const liveRiskScore = (() => {
@@ -208,17 +208,77 @@ export default function OverviewPage() {
 
   // Period diffs from merged timeline (real historical prices)
   const periodPerf = useMemo(() => {
-    function diff(daysAgo: number) {
+    function diffByDate(cutStr: string) {
       if (livePortfolioTotal <= 0) return null;
-      const cutStr = new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
       const pt = [...mergedTimeline].reverse().find(p => p.date <= cutStr);
       if (!pt) return null;
       const delta = livePortfolioTotal - pt.value;
       const pct = pt.value > 0 ? (delta / pt.value) * 100 : 0;
       return { value: Math.round(delta), pct };
     }
-    return { week: diff(7), month: diff(30), halfYear: diff(182), year: diff(365) };
+    function diff(daysAgo: number) {
+      const cutStr = new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 10);
+      return diffByDate(cutStr);
+    }
+    const ytdStr = `${new Date().getFullYear()}-01-01`;
+    return {
+      week: diff(7),
+      month: diff(30),
+      halfYear: diff(182),
+      year: diff(365),
+      ytd: diffByDate(ytdStr),
+    };
   }, [mergedTimeline, livePortfolioTotal]);
+
+  // Per-broker period performance using historical prices × current quantities.
+  // For each broker, computes its value at the cutoff date and compares to today.
+  const brokerPeriodPerf = useMemo(() => {
+    const result: Record<string, { week: { value: number; pct: number } | null; month: { value: number; pct: number } | null; year: { value: number; pct: number } | null; ytd: { value: number; pct: number } | null }> = {};
+    if (!Object.keys(histData).length) return result;
+
+    function brokerValueOn(brokerName: string, cutStr: string): number {
+      let val = 0;
+      for (const p of app.positions) {
+        if ((p.broker || "") !== brokerName) continue;
+        const price = app.liveQuotes[p.ticker]?.current || p.avgPrice;
+        if (p.type === "Кэш") { val += p.qty * p.avgPrice; continue; }
+        const hist = histData[p.ticker];
+        if (!hist?.dates.length) { val += p.qty * price; continue; }
+        let idx = -1;
+        for (let i = hist.dates.length - 1; i >= 0; i--) {
+          if (hist.dates[i] <= cutStr) { idx = i; break; }
+        }
+        val += idx >= 0 ? p.qty * hist.closes[idx] : p.qty * price;
+      }
+      return val;
+    }
+
+    function diffFor(brokerName: string, currentTotal: number, cutStr: string) {
+      const past = brokerValueOn(brokerName, cutStr);
+      if (past <= 0) return null;
+      const delta = currentTotal - past;
+      const pct = (delta / past) * 100;
+      return { value: Math.round(delta), pct };
+    }
+
+    const brokers = new Set(app.positions.map(p => p.broker?.trim() || "").filter(Boolean));
+    const ytdStr = `${new Date().getFullYear()}-01-01`;
+
+    brokers.forEach(name => {
+      const currentTotal = app.positions
+        .filter(p => (p.broker || "") === name)
+        .reduce((s, p) => s + p.qty * (app.liveQuotes[p.ticker]?.current || p.avgPrice), 0);
+      const cut = (days: number) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+      result[name] = {
+        week:  diffFor(name, currentTotal, cut(7)),
+        month: diffFor(name, currentTotal, cut(30)),
+        year:  diffFor(name, currentTotal, cut(365)),
+        ytd:   diffFor(name, currentTotal, ytdStr),
+      };
+    });
+
+    return result;
+  }, [histData, app.positions, app.liveQuotes]);
 
   const portfolioMaxDrawdown = useMemo(() => {
     if (mergedTimeline.length < 2) return 0;
@@ -376,6 +436,10 @@ export default function OverviewPage() {
           liveDailyChangePct={liveDailyChangePct}
           periodPerf={periodPerf}
           positions={app.positions}
+          brokerStats={brokerStats}
+          brokerPeriodPerf={brokerPeriodPerf}
+          totalPnl={app.totalPnl}
+          totalPnlPct={app.totalPnlPct}
         />
 
         <BrokerCards brokerStats={brokerStats} isMobile={isMobile} />

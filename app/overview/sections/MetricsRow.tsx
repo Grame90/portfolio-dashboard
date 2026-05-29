@@ -1,6 +1,7 @@
 "use client";
 
 import type { StoredPosition } from "@/lib/types";
+import type { BrokerStat } from "./BrokerCards";
 
 interface PeriodValue {
   value: number;
@@ -11,7 +12,12 @@ interface PeriodPerf {
   week: PeriodValue | null;
   month: PeriodValue | null;
   year: PeriodValue | null;
+  ytd: PeriodValue | null;
 }
+
+export type PeriodKey = "week" | "month" | "year" | "ytd" | "allTime";
+
+export type BrokerPeriodPerf = Record<string, Partial<Record<PeriodKey, PeriodValue | null>>>;
 
 interface MetricsRowProps {
   livePortfolioTotal: number;
@@ -19,6 +25,42 @@ interface MetricsRowProps {
   liveDailyChangePct: number;
   periodPerf: PeriodPerf;
   positions: StoredPosition[];
+  brokerStats: BrokerStat[];
+  brokerPeriodPerf: BrokerPeriodPerf;
+  totalPnl: number;
+  totalPnlPct: number;
+}
+
+interface BrokerRowProps {
+  name: string;
+  value: number;
+  pct: number;
+}
+
+function BrokerRow({ name, value, pct }: BrokerRowProps) {
+  const color = value >= 0 ? "#22c55e" : "#ef4444";
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <span
+        title={name}
+        style={{
+          color: "var(--text-secondary)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          maxWidth: "55%",
+        }}
+      >
+        {name}
+      </span>
+      <span style={{ fontWeight: 600, color, fontVariantNumeric: "tabular-nums" }}>
+        {value >= 0 ? "+" : ""}{Math.round(value).toLocaleString("en-US")}
+        <span style={{ fontSize: 9, marginLeft: 3, opacity: 0.85 }}>
+          ({pct >= 0 ? "+" : ""}{pct.toFixed(2)}%)
+        </span>
+      </span>
+    </div>
+  );
 }
 
 export function MetricsRow({
@@ -27,15 +69,20 @@ export function MetricsRow({
   liveDailyChangePct,
   periodPerf,
   positions,
+  brokerStats,
+  brokerPeriodPerf,
+  totalPnl,
+  totalPnlPct,
 }: MetricsRowProps) {
   const cashPos = positions.filter(p => p.type === "Кэш");
   const totalCashUsd = cashPos.reduce((s, p) => s + p.qty * p.avgPrice, 0);
   const cashPct = livePortfolioTotal > 0 ? (totalCashUsd / livePortfolioTotal) * 100 : 0;
 
-  const periodCards = [
-    { label: "Неделя", d: periodPerf.week },
-    { label: "Месяц",  d: periodPerf.month },
-    { label: "Год",    d: periodPerf.year },
+  const periodCards: { label: string; key: PeriodKey; d: PeriodValue | null }[] = [
+    { label: "Неделя",        key: "week",    d: periodPerf.week },
+    { label: "Месяц",         key: "month",   d: periodPerf.month },
+    { label: "С начала года", key: "ytd",     d: periodPerf.ytd },
+    { label: "Всё время",     key: "allTime", d: { value: totalPnl, pct: totalPnlPct } },
   ];
 
   return (
@@ -58,9 +105,19 @@ export function MetricsRow({
         <div className={liveDailyChange >= 0 ? "positive" : "negative"} style={{ fontSize: 14 }}>
           {liveDailyChange >= 0 ? "+" : ""}{liveDailyChangePct.toFixed(2)}%
         </div>
+        {brokerStats.length > 0 && (
+          <div style={{
+            display: "flex", flexDirection: "column", gap: 4, fontSize: 11,
+            borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 8,
+          }}>
+            {brokerStats.map(b => (
+              <BrokerRow key={b.name} name={b.name} value={b.dailyChange} pct={b.dailyChangePct} />
+            ))}
+          </div>
+        )}
       </div>
 
-      {periodCards.map(({ label, d }) => (
+      {periodCards.map(({ label, key, d }) => (
         <div key={label} className="card">
           <div className="card-title">{label}</div>
           {d == null ? (
@@ -74,6 +131,30 @@ export function MetricsRow({
                 {d.pct >= 0 ? "+" : ""}{Math.abs(d.pct).toFixed(2)}%
               </div>
             </>
+          )}
+          {brokerStats.length > 0 && (
+            <div style={{
+              display: "flex", flexDirection: "column", gap: 4, fontSize: 11,
+              borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 8,
+            }}>
+              {brokerStats.map(b => {
+                const bp = key === "allTime"
+                  ? { value: b.pnl, pct: b.pnlPct }
+                  : brokerPeriodPerf[b.name]?.[key];
+                if (!bp) {
+                  return (
+                    <div key={b.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{
+                        color: "var(--text-secondary)",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "55%",
+                      }} title={b.name}>{b.name}</span>
+                      <span style={{ color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>—</span>
+                    </div>
+                  );
+                }
+                return <BrokerRow key={b.name} name={b.name} value={bp.value} pct={bp.pct} />;
+              })}
+            </div>
           )}
         </div>
       ))}

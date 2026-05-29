@@ -43,7 +43,7 @@ export const ALL_COLS: { id: ColId; label: string; extra?: boolean }[] = [
 
 export const DEFAULT_COLS = new Set<ColId>([
   "idx", "ticker", "name", "qty", "avgPrice", "currentPrice",
-  "value", "pnl", "pnlPct", "share", "targetShare", "deviation", "action",
+  "value", "dayUsd", "dayPct", "pnl", "pnlPct", "share", "targetShare", "deviation", "action",
 ]);
 
 export const DEFAULT_LADDER_STEP = 5;

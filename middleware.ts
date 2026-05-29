@@ -5,6 +5,12 @@ import type { NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
 
+  // The widget endpoint is called from iOS Scriptable (no Supabase session
+  // cookies). It authenticates itself via ?token=… matching WIDGET_TOKEN.
+  if (request.nextUrl.pathname.startsWith("/api/widget")) {
+    return response;
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

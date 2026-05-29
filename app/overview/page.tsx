@@ -24,6 +24,7 @@ import { MetricsRow } from "./sections/MetricsRow";
 import { BrokerCards } from "./sections/BrokerCards";
 import { DividendsRow } from "./sections/DividendsRow";
 import { AddDividendModal } from "./dialogs/AddDividendModal";
+import { generateBackfillDividends, generatePendingDividends } from "./dividends-auto";
 import { DashboardRow } from "./sections/DashboardRow";
 import { LeadersRow } from "./sections/LeadersRow";
 import { StructureRow } from "./sections/StructureRow";
@@ -130,9 +131,46 @@ export default function OverviewPage() {
   const [receivedDividends, setReceivedDividends] = useState<ReceivedDividend[]>([]);
   const [showDivModal, setShowDivModal] = useState(false);
   const [divExpanded, setDivExpanded] = useState(false);
-  const [divForm, setDivForm] = useState({ ticker: "", amountPerShare: "", shares: "", date: new Date().toISOString().slice(0, 10), note: "" });
+  const [editingDivId, setEditingDivId] = useState<string | null>(null);
+  const emptyDivForm = { ticker: "", amountPerShare: "", shares: "", date: new Date().toISOString().slice(0, 10), note: "", broker: "" };
+  const [divForm, setDivForm] = useState(emptyDivForm);
 
   useEffect(() => { setReceivedDividends(loadDividends()); }, []);
+
+  // Auto-backfill: when positions load (e.g. just-added instruments with a past
+  // purchaseDate), generate quarterly dividend entries for completed quarters.
+  // Idempotent: skips ticker+quarter that already has any entry.
+  useEffect(() => {
+    if (!app.positions.length) return;
+    setReceivedDividends((prev) => {
+      const additions = generateBackfillDividends(app.positions, prev);
+      if (additions.length === 0) return prev;
+      // Newest first (matches load order)
+      const merged = [...additions, ...prev].sort((a, b) => b.date.localeCompare(a.date));
+      saveDividends(merged);
+      return merged;
+    });
+  }, [app.positions]);
+
+  // Transient pending list for the current quarter, computed on every render.
+  const pendingDividends = useMemo(
+    () => generatePendingDividends(app.positions, receivedDividends),
+    [app.positions, receivedDividends],
+  );
+
+  // Ticker dropdown options from current positions (non-cash, with shares)
+  const dividendTickerOptions = useMemo(() => {
+    return app.positions
+      .filter(p => p.type !== "Кэш" && p.qty > 0)
+      .map(p => ({ ticker: p.ticker, shares: p.qty, broker: p.broker || undefined }))
+      .sort((a, b) => a.ticker.localeCompare(b.ticker));
+  }, [app.positions]);
+
+  const dividendBrokerOptions = useMemo(() => {
+    return Array.from(new Set(
+      app.positions.map(p => p.broker?.trim() || "").filter(Boolean),
+    )).sort();
+  }, [app.positions]);
 
   const divPositions = useMemo(() => {
     return app.positions
@@ -156,19 +194,112 @@ export default function OverviewPage() {
     .filter(d => d.date.startsWith(currentYear))
     .reduce((s, d) => s + d.totalUSD, 0);
 
-  function addDividend() {
+  function saveDividend() {
     if (!divForm.ticker || !divForm.amountPerShare || !divForm.shares) return;
     const totalUSD = Number(divForm.amountPerShare) * Number(divForm.shares);
-    const entry: ReceivedDividend = {
-      id: Date.now().toString(), ticker: divForm.ticker.toUpperCase(),
-      amountPerShare: Number(divForm.amountPerShare), shares: Number(divForm.shares),
-      totalUSD, date: divForm.date, note: divForm.note,
-    };
-    const next = [entry, ...receivedDividends];
+    const broker = divForm.broker.trim();
+    if (editingDivId) {
+      const updated = receivedDividends.map(d => d.id === editingDivId ? {
+        ...d,
+        ticker: divForm.ticker.toUpperCase(),
+        amountPerShare: Number(divForm.amountPerShare),
+        shares: Number(divForm.shares),
+        totalUSD,
+        date: divForm.date,
+        note: divForm.note,
+        broker: broker || undefined,
+      } : d);
+      setReceivedDividends(updated);
+      saveDividends(updated);
+    } else {
+      const entry: ReceivedDividend = {
+        id: Date.now().toString(),
+        ticker: divForm.ticker.toUpperCase(),
+        amountPerShare: Number(divForm.amountPerShare),
+        shares: Number(divForm.shares),
+        totalUSD,
+        date: divForm.date,
+        note: divForm.note,
+        broker: broker || undefined,
+      };
+      const next = [entry, ...receivedDividends];
+      setReceivedDividends(next);
+      saveDividends(next);
+    }
+    setShowDivModal(false);
+    setEditingDivId(null);
+    setDivForm(emptyDivForm);
+  }
+
+  function openAddDividend() {
+    setEditingDivId(null);
+    setDivForm({ ...emptyDivForm, date: new Date().toISOString().slice(0, 10) });
+    setShowDivModal(true);
+  }
+
+  function openEditDividend(d: ReceivedDividend) {
+    setEditingDivId(d.id);
+    setDivForm({
+      ticker: d.ticker,
+      amountPerShare: String(d.amountPerShare),
+      shares: String(d.shares),
+      date: d.date,
+      note: d.note,
+      broker: d.broker ?? "",
+    });
+    setShowDivModal(true);
+  }
+
+  function deleteDividend(id: string) {
+    if (!window.confirm("Удалить эту запись о дивиденде?")) return;
+    const next = receivedDividends.filter(d => d.id !== id);
     setReceivedDividends(next);
     saveDividends(next);
-    setShowDivModal(false);
-    setDivForm({ ticker: "", amountPerShare: "", shares: "", date: new Date().toISOString().slice(0, 10), note: "" });
+  }
+
+  // Credit the broker's USD cash position by `amount`. If no USD cash position
+  // exists for that broker, create one (so dividend lands somewhere visible).
+  function creditBrokerCash(broker: string, amount: number) {
+    if (!broker || amount <= 0) return;
+    const positions = app.positions;
+    const cashIdx = positions.findIndex(
+      p => p.type === "Кэш" && (p.broker || "") === broker && (p.ticker === "USD" || p.ticker === "USDT"),
+    );
+    let updated;
+    if (cashIdx >= 0) {
+      updated = positions.map((p, i) => i === cashIdx ? { ...p, qty: p.qty + amount } : p);
+    } else {
+      const newId = positions.reduce((max, p) => Math.max(max, p.id), 0) + 1;
+      updated = [...positions, {
+        id: newId,
+        ticker: "USD",
+        name: "Доллар США",
+        type: "Кэш",
+        qty: amount,
+        avgPrice: 1,
+        color: "#22c55e",
+        purchaseDate: new Date().toISOString().slice(0, 10),
+        action: "",
+        broker,
+      }];
+    }
+    app.setPositions(updated);
+  }
+
+  // Materialize a pending dividend into a manual record and credit the broker
+  // cash balance by the dividend amount.
+  function confirmPendingDividend(d: ReceivedDividend) {
+    const entry: ReceivedDividend = {
+      ...d,
+      id: Date.now().toString(),
+      source: "manual",
+      note: "Зачислено на счёт брокера",
+      date: new Date().toISOString().slice(0, 10),
+    };
+    const next = [entry, ...receivedDividends].sort((a, b) => b.date.localeCompare(a.date));
+    setReceivedDividends(next);
+    saveDividends(next);
+    if (d.broker) creditBrokerCash(d.broker, d.totalUSD);
   }
 
   // Load history once on mount
@@ -452,9 +583,13 @@ export default function OverviewPage() {
           ytdReceived={ytdReceived}
           divPositions={divPositions}
           receivedDividends={receivedDividends}
+          pendingDividends={pendingDividends}
           divExpanded={divExpanded}
           setDivExpanded={setDivExpanded}
-          onAddClick={() => setShowDivModal(true)}
+          onAddClick={openAddDividend}
+          onEditClick={openEditDividend}
+          onDeleteClick={deleteDividend}
+          onConfirmPending={confirmPendingDividend}
         />
 
         <DashboardRow
@@ -506,8 +641,11 @@ export default function OverviewPage() {
         open={showDivModal}
         form={divForm}
         setForm={setDivForm}
-        onClose={() => setShowDivModal(false)}
-        onSave={addDividend}
+        onClose={() => { setShowDivModal(false); setEditingDivId(null); }}
+        onSave={saveDividend}
+        isEdit={editingDivId !== null}
+        tickerOptions={dividendTickerOptions}
+        brokerOptions={dividendBrokerOptions}
       />
     </div>
   );

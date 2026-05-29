@@ -20,7 +20,6 @@ import BrokerManagerModal from "@/components/diary/BrokerManagerModal";
 import JournalView from "@/components/diary/JournalView";
 import AnalyticsView from "@/components/diary/AnalyticsView";
 import SettingsView from "@/components/diary/SettingsView";
-import ExcelView from "@/components/diary/ExcelView";
 import {
   ensureTodayEntry,
   isEntryLive,
@@ -70,7 +69,7 @@ import type {
 import { usePortfolioStore } from "@/lib/store/usePortfolioStore";
 import { useQuotesStore } from "@/lib/store/useQuotesStore";
 
-type Tab = "journal" | "analytics" | "excel" | "settings";
+type Tab = "journal" | "analytics" | "settings";
 
 // Re-check daily snapshot every minute. Cheap; keeps the live row fresh.
 const REFRESH_INTERVAL_MS = 60_000;
@@ -486,7 +485,6 @@ export default function DiaryPage() {
       <div style={tabsBar}>
         <button onClick={() => setTab("journal")} style={tabBtn(tab === "journal")}>Журнал</button>
         <button onClick={() => setTab("analytics")} style={tabBtn(tab === "analytics")}>Аналитика</button>
-        <button onClick={() => setTab("excel")} style={tabBtn(tab === "excel")}>Excel</button>
         <button onClick={() => setTab("settings")} style={tabBtn(tab === "settings")}>Настройки</button>
       </div>
 
@@ -506,10 +504,6 @@ export default function DiaryPage() {
 
       {tab === "analytics" && (
         <AnalyticsView entries={entries} brokers={brokers} cfg={cfg} events={events} />
-      )}
-
-      {tab === "excel" && (
-        <ExcelView positions={positions} liveQuotes={liveQuotes} brokers={brokers} />
       )}
 
       {tab === "settings" && (

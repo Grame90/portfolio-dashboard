@@ -8,7 +8,9 @@ import {
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import { usePortfolioHistory } from "@/lib/usePortfolioHistory";
-import { DIVIDEND_YIELDS, loadDividends, ReceivedDividend } from "@/app/overview/page";
+import { DIVIDEND_YIELDS } from "@/app/overview/constants";
+import { loadDividends } from "@/app/overview/utils";
+import type { ReceivedDividend } from "@/app/overview/types";
 
 const periodOptions = ["1М", "3М", "6М", "YTD", "1Г", "ВСЕ"];
 

@@ -11,25 +11,27 @@ export function usePortfolioHistory(
   lsHistory:  HistPoint[],
   liveTotal:  number,
   liveCost:   number,
+  extraTickers: string[] = [],
+  days = 500,
 ) {
   const [histData,   setHistData]   = useState<HistData>({});
   const [histLoaded, setHistLoaded] = useState(false);
 
   useEffect(() => {
-    const tickers = positions
+    const positionTickers = positions
       .filter(p => p.type !== "Кэш")
       .map(p => p.ticker);
+    const tickers = Array.from(new Set([...positionTickers, ...extraTickers].filter(Boolean)));
     if (!tickers.length) { setHistLoaded(true); return; }
     setHistLoaded(false);
-    fetch(`/api/historical?tickers=${tickers.join(",")}&days=500`)
+    fetch(`/api/historical?tickers=${tickers.join(",")}&days=${days}`)
       .then(r => r.ok ? r.json() : {})
       .then((data: HistData) => { setHistData(data ?? {}); setHistLoaded(true); })
       .catch(() => setHistLoaded(true));
-  // Only re-run when ticker list changes (deep comparison via join)
+  // Only re-run when ticker list or days changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [positions.map(p => p.ticker).join(",")]);
+  }, [positions.map(p => p.ticker).join(","), extraTickers.join(","), days]);
 
-  // Daily portfolio value from historical prices × current quantities
   const computedTimeline = useMemo((): HistPoint[] => {
     if (!positions.length || !Object.keys(histData).length) return [];
     const totalCost = positions.reduce((s, p) => s + p.qty * p.avgPrice, 0);
@@ -52,7 +54,6 @@ export function usePortfolioHistory(
     });
   }, [histData, positions]);
 
-  // Merge: computedTimeline overrides localStorage; today's live value always wins
   const mergedTimeline = useMemo((): HistPoint[] => {
     const byDate = new Map<string, { value: number; cost: number }>();
     for (const p of lsHistory) byDate.set(p.date, { value: p.value, cost: p.cost });

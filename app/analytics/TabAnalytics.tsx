@@ -53,8 +53,6 @@ export default function TabAnalytics() {
   const isMobile = useMobile();
   const app = useApp();
   const [period, setPeriod] = useState("YTD");
-  const [histData, setHistData] = useState<Record<string, { dates: string[]; closes: number[]; returns: number[] }>>({});
-  const [histLoading, setHistLoading] = useState(false);
   const [receivedDividends, setReceivedDividends] = useState<ReceivedDividend[]>([]);
   const [history, setHistory] = useState<{ date: string; value: number; cost: number }[]>([]);
 
@@ -66,7 +64,14 @@ export default function TabAnalytics() {
     } catch {}
   }, []);
 
-  const { mergedTimeline, histLoaded: portfolioHistLoaded } = usePortfolioHistory(app.positions, history, app.portfolioTotal, app.totalCost);
+  const { mergedTimeline, histData, histLoaded: portfolioHistLoaded } = usePortfolioHistory(
+    app.positions,
+    history,
+    app.portfolioTotal,
+    app.totalCost,
+    ["SPY", "QQQ", "GLD"],
+    365,
+  );
 
   const divPositions = useMemo(() => {
     return app.positions
@@ -121,12 +126,16 @@ export default function TabAnalytics() {
 
   const liveCorrelation = useMemo(() => {
     const benchmarks = new Set(["SPY", "QQQ", "GLD"]);
-    const tickers = Object.keys(histData).filter(t => !benchmarks.has(t) && histData[t].returns.length > 10);
+    const tickers = Object.keys(histData).filter(
+      t => !benchmarks.has(t) && (histData[t].returns?.length ?? 0) > 10
+    );
     if (tickers.length < 2) return null;
     const matrix = tickers.map((ta) =>
       tickers.map((tb) => {
         if (ta === tb) return 1;
-        return parseFloat(pearsonCorr(histData[ta].returns, histData[tb].returns).toFixed(2));
+        const a = histData[ta].returns ?? [];
+        const b = histData[tb].returns ?? [];
+        return parseFloat(pearsonCorr(a, b).toFixed(2));
       })
     );
     return { tickers, data: matrix };
@@ -226,19 +235,11 @@ export default function TabAnalytics() {
     return (ret >= 0 ? "+" : "") + ret.toFixed(2) + "%";
   }, [mergedTimeline, period]);
 
-  useEffect(() => {
-    const posTickers = app.positions.filter(p => p.type !== "Кэш").map(p => p.ticker);
-    const allTickers = [...new Set([...posTickers, "SPY", "QQQ", "GLD"])];
-    setHistLoading(true);
-    fetch(`/api/historical?tickers=${allTickers.join(",")}&days=365`)
-      .then(r => r.ok ? r.json() : {})
-      .then((d: Record<string, { dates: string[]; closes: number[]; returns: number[] }>) => { setHistData(d ?? {}); setHistLoading(false); })
-      .catch(() => setHistLoading(false));
-  }, [app.positions]);
-
   const analyticsMetrics = (() => {
     const benchmarks = new Set(["SPY", "QQQ", "GLD"]);
-    const allReturns: number[][] = Object.entries(histData).filter(([t]) => !benchmarks.has(t)).map(([, d]) => d.returns).filter(r => r.length > 5);
+    const allReturns: number[][] = Object.entries(histData)
+      .filter(([t, d]) => !benchmarks.has(t) && (d.returns?.length ?? 0) > 5)
+      .map(([, d]) => d.returns ?? []);
     if (!allReturns.length) return null;
     const minLen = Math.min(...allReturns.map(r => r.length));
     const portReturns = Array.from({ length: minLen }, (_, i) =>
@@ -354,9 +355,9 @@ export default function TabAnalytics() {
         {[
           { label: "Общая прибыль (USD)", value: `${app.totalPnl >= 0 ? "+" : ""}${Math.round(app.totalPnl).toLocaleString("en-US")}`, sub: `${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnl >= 0 ? "#22c55e" : "#ef4444" },
           { label: "Средняя доходность (YTD)", value: `${app.totalPnlPct >= 0 ? "+" : ""}${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnlPct >= 0 ? "#22c55e" : "#ef4444" },
-          { label: "Волатильность портфеля", value: histLoading ? "…" : `${liveVol30d}%`, sub: "Умеренная", color: "#f59e0b" },
-          { label: "Коэффициент Шарпа", value: histLoading ? "…" : (analyticsMetrics?.sharpe ?? "–"), sub: "Хороший", color: "#22c55e" },
-          { label: "Макс. просадка (истор.)", value: histLoading ? "…" : `${analyticsMetrics?.maxDrawdown ?? drawdownStats.max.toFixed(2)}%`, sub: "Умеренная", color: "#ef4444" },
+          { label: "Волатильность портфеля", value: !portfolioHistLoaded ? "…" : `${liveVol30d}%`, sub: "Умеренная", color: "#f59e0b" },
+          { label: "Коэффициент Шарпа", value: !portfolioHistLoaded ? "…" : (analyticsMetrics?.sharpe ?? "–"), sub: "Хороший", color: "#22c55e" },
+          { label: "Макс. просадка (истор.)", value: !portfolioHistLoaded ? "…" : `${analyticsMetrics?.maxDrawdown ?? drawdownStats.max.toFixed(2)}%`, sub: "Умеренная", color: "#ef4444" },
           { label: "Бета (рынок)", value: weightedBeta.toFixed(2), sub: betaSub },
           { label: "Корреляция с S&P 500", value: spyCorrelation.toString(), sub: spyCorrelation >= 0.75 ? "Высокая" : spyCorrelation >= 0.5 ? "Средняя" : "Низкая", color: "#f59e0b" },
         ].map((m) => (
@@ -408,7 +409,7 @@ export default function TabAnalytics() {
             </ResponsiveContainer>
           ) : (
             <div style={{ height: 200, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 12, textAlign: "center", padding: "0 16px" }}>
-              {(histLoading || !portfolioHistLoaded) ? "Загрузка исторических данных…" : "Недостаточно данных. Данные появятся после нескольких дней работы."}
+              {!portfolioHistLoaded ? "Загрузка исторических данных…" : "Недостаточно данных. Данные появятся после нескольких дней работы."}
             </div>
           )}
         </div>
@@ -461,7 +462,7 @@ export default function TabAnalytics() {
             </div>
           ) : (
             <div style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 8 }}>
-              {histLoading ? "Загрузка данных…" : "Добавьте 2+ позиции (акции/ETF) для расчёта корреляции"}
+              {!portfolioHistLoaded ? "Загрузка данных…" : "Добавьте 2+ позиции (акции/ETF) для расчёта корреляции"}
             </div>
           )}
         </div>

@@ -2,7 +2,6 @@ import { useAuthStore } from "./store/useAuthStore";
 import { usePortfolioStore } from "./store/usePortfolioStore";
 import { useSettingsStore } from "./store/useSettingsStore";
 import { useQuotesStore } from "./store/useQuotesStore";
-import { loadDayBaseline } from "./tradingDay";
 
 export function useApp() {
   const auth = useAuthStore();
@@ -14,11 +13,12 @@ export function useApp() {
   const totalCost = portfolio.positions.reduce((s, p) => s + p.qty * p.avgPrice, 0);
   const totalPnl = portfolioTotal - totalCost;
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-  // Daily change: prefer Istanbul 06:00 baseline (saved by DashboardProvider on day start).
-  // Falls back to market previousClose deltas if no baseline is recorded yet.
-  const istanbulBaseline = typeof window !== "undefined" ? loadDayBaseline() : null;
-
-  const marketDailyChange = portfolio.positions.reduce((sum, p) => {
+  // Daily change: sum of (current - previousClose) × qty across positions.
+  // This always reflects the real market move from yesterday's close, regardless of
+  // when the user opened the app. The Istanbul 06:00 baseline previously used here
+  // gave misleadingly small values when the app was opened mid-day, because it
+  // measured "change since baseline saved", not "today's market move".
+  const dailyChange = portfolio.positions.reduce((sum, p) => {
     const q = quotes.liveQuotes[p.ticker];
     if (!q) return sum;
     const current = Number(q.current);
@@ -29,8 +29,7 @@ export function useApp() {
     return sum + p.qty * (current - previousClose);
   }, 0);
 
-  const prevTotal = istanbulBaseline ?? (portfolioTotal - marketDailyChange);
-  const dailyChange = portfolioTotal - prevTotal;
+  const prevTotal = portfolioTotal - dailyChange;
   const dailyChangePct = prevTotal > 0 ? (dailyChange / prevTotal) * 100 : 0;
 
   const computedPositions = portfolio.positions.map(p => {

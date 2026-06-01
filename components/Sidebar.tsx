@@ -38,6 +38,10 @@ const THEMES = [
 type ColorId = (typeof THEMES)[number]["id"];
 type ThemeId = ColorId | `light-${ColorId}`;
 
+// Design variants — 4 radically different looks (+ default). Form, font, texture,
+// surfaces. Wired to <html data-variant="N">; styles live in globals.css.
+const DESIGN_VARIANTS = ["Классика", "Стекло", "Киберпанк", "Кибер·тьма", "Минимал"] as const;
+
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -48,9 +52,23 @@ export default function Sidebar() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState("");
+  const [designVariant, setDesignVariant] = useState(1);
+
+  function changeDesignVariant(v: number) {
+    setDesignVariant(v);
+    try { localStorage.setItem("design-variant", String(v)); } catch {}
+    document.documentElement.setAttribute("data-variant", String(v));
+  }
 
   useEffect(() => {
     setMounted(true);
+    try {
+      const saved = Number(localStorage.getItem("design-variant"));
+      if (saved >= 1 && saved <= 5) {
+        setDesignVariant(saved);
+        document.documentElement.setAttribute("data-variant", String(saved));
+      }
+    } catch {}
     function tick() {
       const now = new Date();
       const d = `${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`;
@@ -322,6 +340,28 @@ export default function Sidebar() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Design variant slider (1-5) */}
+        <div style={{ marginTop: 12, padding: "0 8px" }}>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", marginBottom: 4 }}>
+            {DESIGN_VARIANTS[designVariant - 1] ?? `Вариант ${designVariant}`}
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={5}
+            step={1}
+            value={designVariant}
+            onChange={(e) => changeDesignVariant(Number(e.target.value))}
+            title={`Дизайн: ${DESIGN_VARIANTS[designVariant - 1]}`}
+            style={{ width: "100%", accentColor: "var(--accent)", cursor: "pointer" }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "var(--text-muted)", marginTop: 2 }}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <span key={n} style={{ fontWeight: designVariant === n ? 700 : 400, color: designVariant === n ? "var(--accent-light)" : "var(--text-muted)" }}>{n}</span>
+            ))}
+          </div>
         </div>
 
         {updatedAt && (

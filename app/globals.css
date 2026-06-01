@@ -23,6 +23,21 @@
 .price-flash-up   { animation: priceUp   0.6s ease-out; border-radius: 3px; }
 .price-flash-down { animation: priceDown 0.6s ease-out; border-radius: 3px; }
 
+/* Tabular numerals: all digits render with equal width so updating live
+ * prices doesn't cause surrounding text to jitter as digits change. Affects
+ * digits only — letters and symbols render normally. */
+.card,
+table,
+.metric-value,
+.metric-label,
+.badge,
+.progress-bar {
+  font-variant-numeric: tabular-nums;
+  -moz-font-feature-settings: "tnum";
+  -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+}
+
 :root {
   --bg-primary: #0a0a1a;
   --bg-secondary: #111128;
@@ -161,6 +176,10 @@ body {
   border-radius: 10px;
   /* Fluid padding: tight on small screens, comfortable on desktop. */
   padding: clamp(10px, 1.1vw, 15px);
+  /* Long values (broker breakdowns, large totals) must stay inside the card
+   * — otherwise they bleed into the next card on narrow grid columns. */
+  overflow: hidden;
+  min-width: 0;
 }
 
 .card-title {
@@ -328,4 +347,525 @@ body {
   [style*="fontSize: 28"] { font-size: 20px !important; }
   [style*="fontSize: 26"] { font-size: 18px !important; }
   [style*="fontSize: 22"] { font-size: 16px !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   DESIGN VARIANTS — html[data-variant="1..5"]  (sidebar slider)
+   Variant 1 = default (no overrides). Others added one at a time.
+   Surfaces are re-mixed off theme tokens so each variant still composes
+   with the colour picker (data-theme) + light/dark.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ─── VARIANT 2 · СТЕКЛО — Glassmorphism: frosted blur, glow, big radius ─ */
+html[data-variant="2"] body {
+  background:
+    radial-gradient(60% 50% at 15% 0%, color-mix(in srgb, var(--accent) 26%, transparent) 0%, transparent 60%),
+    radial-gradient(50% 45% at 100% 100%, color-mix(in srgb, var(--accent-light) 20%, transparent) 0%, transparent 55%),
+    var(--bg-primary);
+  background-attachment: fixed;
+}
+html[data-variant="2"] .card {
+  background: color-mix(in srgb, var(--bg-card) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  border-radius: 20px;
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: 0 10px 36px rgba(0,0,0,0.30), inset 0 1px 0 color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
+html[data-variant="2"] .card-title { color: var(--accent-light); }
+html[data-variant="2"] .btn-primary {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 80%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+html[data-variant="2"] .tab-btn { border-radius: 10px; }
+html[data-variant="2"] .badge { border-radius: 8px; backdrop-filter: blur(6px); }
+
+/* variant-3+4 rebuild trigger */
+/* ════════════════════════════════════════════════════════════════════
+   VARIANT 3 · 工業 — JAPANESE TECHWEAR PRINT POSTER
+   Warm cream paper, industrial-orange + charcoal ink, stamped offset
+   panels, condensed stencil type. LIGHT skin — surface/text/accent tokens
+   are overridden in this scope so every inline-styled block (hero gradient,
+   orange left rail, accent totals) inherits the cream-and-orange look.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Token overrides: dark ink on aged cream, industrial orange accent ── */
+html[data-variant="3"] {
+  --bg-primary: #f2efe6;
+  --bg-secondary: #ece7da;
+  --bg-card: #f7f4ec;
+  --bg-card-hover: #efe9dc;
+  --border: #16140f;
+  --accent: #ea5a0c;
+  --accent-light: #f6822a;
+  --text-primary: #16140f;
+  --text-secondary: #4a463c;
+  --text-muted: #8a8474;
+  --green: #2f7d32;
+  --red: #d92b1f;
+  --yellow: #c98a00;
+  --blue: #1f6fd9;
+}
+
+/* ── Paper field: cream base + dotted grain + cross-hatched print grain +
+      faint vertical print lines + sparse orange/charcoal/red ink-splatter
+      blooms. ── */
+html[data-variant="3"] body {
+  background-color: #f2efe6;
+  background-image:
+    radial-gradient(42% 38% at 88% 6%, rgba(234,90,12,0.10) 0%, rgba(234,90,12,0) 60%),
+    radial-gradient(38% 34% at 4% 96%, rgba(22,20,15,0.08) 0%, rgba(22,20,15,0) 62%),
+    radial-gradient(24% 22% at 70% 80%, rgba(217,43,31,0.06) 0%, rgba(217,43,31,0) 60%),
+    radial-gradient(rgba(22,20,15,0.05) 1px, rgba(22,20,15,0) 1px),
+    radial-gradient(rgba(22,20,15,0.04) 1px, rgba(22,20,15,0) 1px),
+    repeating-linear-gradient(90deg, rgba(22,20,15,0.020) 0px, rgba(22,20,15,0.020) 1px, transparent 1px, transparent 5px),
+    repeating-linear-gradient(54deg, rgba(22,20,15,0.018) 0px, rgba(22,20,15,0.018) 1px, rgba(22,20,15,0) 1px, rgba(22,20,15,0) 3px),
+    repeating-linear-gradient(126deg, rgba(22,20,15,0.016) 0px, rgba(22,20,15,0.016) 1px, rgba(22,20,15,0) 1px, rgba(22,20,15,0) 4px),
+    linear-gradient(0deg, #efe9dc 0%, #f2efe6 40%, #f4f1e9 100%);
+  background-size:
+    100% 100%, 100% 100%, 100% 100%, 7px 7px, 13px 13px, 100% 100%, 4px 4px, 4px 4px, 100% 100%;
+  background-position:
+    0 0, 0 0, 0 0, 0 0, 4px 6px, 0 0, 0 0, 0 0, 0 0;
+  background-attachment: fixed, fixed, fixed, scroll, scroll, fixed, fixed, fixed, fixed;
+  color: var(--text-primary);
+}
+
+/* ── Cards = printed paper panels: thick near-black border, hard offset
+      stamp shadow, near-zero radius, opaque cream so recharts stay legible. ── */
+html[data-variant="3"] .card {
+  position: relative;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 2px;
+  box-shadow: 4px 4px 0 0 #16140f;
+  background-image:
+    radial-gradient(60% 50% at 100% 0%, rgba(234,90,12,0.05) 0%, rgba(234,90,12,0) 55%),
+    radial-gradient(rgba(22,20,15,0.035) 1px, rgba(22,20,15,0) 1px);
+  background-size: 100% 100%, 9px 9px;
+  transition: box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+/* Faint inner panel rule — line-work inset over the stamp. */
+html[data-variant="3"] .card::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  border: 1px solid rgba(22,20,15,0.10);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* Orange HUD corner bracket — top-right equipment tag. */
+html[data-variant="3"] .card::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 13px;
+  height: 13px;
+  border-top: 3px solid var(--accent);
+  border-right: 3px solid var(--accent);
+  pointer-events: none;
+}
+
+/* Stamp lifts off the page on hover: shadow grows + orange feedback ring. */
+html[data-variant="3"] .card:hover {
+  box-shadow: 6px 6px 0 0 #16140f, 0 0 0 1px rgba(234,90,12,0.45);
+  transform: translate(-1px, -1px);
+}
+
+/* ── Card title: condensed, uppercase, heavy, wide tracking, orange ink. ── */
+html[data-variant="3"] .card-title {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-left: 4px solid var(--accent);
+  padding-left: 8px;
+  margin-bottom: 11px;
+  text-shadow: 0.5px 0.5px 0 rgba(22,20,15,0.12);
+}
+
+/* ── Metric value: heavy condensed near-black, tight tracking, large. ── */
+html[data-variant="3"] .metric-value {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* Hero portfolio total + period values (inline fontSize:32 / 22). */
+html[data-variant="3"] .card [style*="fontSize: 32"],
+html[data-variant="3"] .card [style*="fontSize: 22"] {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* ── Equipment-label feel: monospaced stamped small text. ── */
+html[data-variant="3"] .metric-label {
+  font-family: "JetBrains Mono", "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* ── P&L colours: strong ink-print contrast on cream. ── */
+html[data-variant="3"] .positive { color: var(--green); }
+html[data-variant="3"] .negative { color: var(--red); }
+html[data-variant="3"] .neutral  { color: var(--text-secondary); }
+html[data-variant="3"] .accent   { color: var(--accent); }
+
+/* ── Table rows: hard charcoal hairlines (legible finance ledger). ── */
+html[data-variant="3"] .table-row {
+  border-bottom: 1px solid rgba(22,20,15,0.24);
+}
+
+/* ── Badges: square stamped equipment chips, monospace, semantic borders. ── */
+html[data-variant="3"] .badge {
+  border-radius: 0;
+  border: 1.5px solid var(--border);
+  font-family: "JetBrains Mono", "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+}
+html[data-variant="3"] .badge-green {
+  background: rgba(47,125,50,0.16);
+  color: var(--green);
+  border-color: var(--green);
+}
+html[data-variant="3"] .badge-red {
+  background: rgba(217,43,31,0.16);
+  color: var(--red);
+  border-color: var(--red);
+}
+html[data-variant="3"] .badge-yellow {
+  background: rgba(201,138,0,0.18);
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+html[data-variant="3"] .badge-blue {
+  background: rgba(31,111,217,0.16);
+  color: var(--blue);
+  border-color: var(--blue);
+}
+html[data-variant="3"] .badge-purple {
+  background: rgba(234,90,12,0.16);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Progress bar: hard charcoal track, orange-graded fill, square. ── */
+html[data-variant="3"] .progress-bar {
+  border-radius: 0;
+  border: 1.5px solid var(--border);
+  background: #e4ddcd;
+  height: 8px;
+}
+html[data-variant="3"] .progress-fill {
+  border-radius: 0;
+  background: var(--accent);
+  background-image: linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%);
+}
+
+/* ── Primary button: square stencil, orange fill, black border, hard offset. ── */
+html[data-variant="3"] .btn-primary {
+  border-radius: 0;
+  border: 2px solid var(--border);
+  background: var(--accent);
+  color: #16140f;
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 3px 3px 0 0 #16140f;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+html[data-variant="3"] .btn-primary:hover {
+  background: #16140f;
+  color: #f6822a;
+  box-shadow: 1px 1px 0 0 #16140f;
+  transform: translate(2px, 2px);
+}
+
+/* ── Tabs: square stencil chips with hard borders; active = orange stamp. ── */
+html[data-variant="3"] .tab-btn {
+  border-radius: 0;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+html[data-variant="3"] .tab-btn.active {
+  background: var(--accent);
+  color: #16140f;
+  box-shadow: 2px 2px 0 0 #16140f;
+}
+html[data-variant="3"] .tab-btn:hover:not(.active) {
+  background: #16140f;
+  color: #f6822a;
+}
+
+/* ── Scrollbar: charcoal/orange industrial, square. ── */
+html[data-variant="3"] ::-webkit-scrollbar-track {
+  background: #ece7da;
+}
+html[data-variant="3"] ::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 0;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   VARIANT 4 · 夜 — TECHWEAR NIGHT (dark cyberpunk)
+   Same industrial-orange techwear language as variant 3, inverted to a
+   warm charcoal night: dark armoured panels, neon-orange glow accents,
+   alarm-red pops, cream stencil ink. DARK skin — token overrides.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Token overrides: warm-black surfaces, glowing orange accent ── */
+html[data-variant="4"] {
+  --bg-primary: #100d09;
+  --bg-secondary: #181309;
+  --bg-card: #1d1810;
+  --bg-card-hover: #261f14;
+  --border: #3a3122;
+  --accent: #ff6a14;
+  --accent-light: #ff8a3d;
+  --text-primary: #f3ede0;
+  --text-secondary: #b6ac96;
+  --text-muted: #7c7360;
+  --green: #3fae4a;
+  --red: #ff4d3d;
+  --yellow: #f5b301;
+  --blue: #4d9bff;
+}
+
+/* ── Night field: warm-black base + neon orange/red blooms + light grain. ── */
+html[data-variant="4"] body {
+  background-color: #100d09;
+  background-image:
+    radial-gradient(46% 40% at 88% 4%, rgba(255,106,20,0.16) 0%, rgba(255,106,20,0) 60%),
+    radial-gradient(40% 36% at 4% 98%, rgba(255,138,61,0.10) 0%, rgba(255,138,61,0) 62%),
+    radial-gradient(26% 22% at 68% 82%, rgba(217,43,31,0.12) 0%, rgba(217,43,31,0) 60%),
+    radial-gradient(rgba(243,237,224,0.05) 1px, rgba(243,237,224,0) 1px),
+    radial-gradient(rgba(243,237,224,0.04) 1px, rgba(243,237,224,0) 1px),
+    repeating-linear-gradient(90deg, rgba(243,237,224,0.018) 0px, rgba(243,237,224,0.018) 1px, transparent 1px, transparent 5px),
+    repeating-linear-gradient(54deg, rgba(243,237,224,0.014) 0px, rgba(243,237,224,0.014) 1px, rgba(243,237,224,0) 1px, rgba(243,237,224,0) 3px),
+    linear-gradient(0deg, #0c0a07 0%, #100d09 45%, #14100a 100%);
+  background-size:
+    100% 100%, 100% 100%, 100% 100%, 7px 7px, 13px 13px, 100% 100%, 4px 4px, 100% 100%;
+  background-position:
+    0 0, 0 0, 0 0, 0 0, 4px 6px, 0 0, 0 0, 0 0;
+  background-attachment: fixed, fixed, fixed, scroll, scroll, fixed, fixed, fixed;
+  color: var(--text-primary);
+}
+
+/* ── Cards = dark armoured panels: warm border, dark offset stamp +
+      faint orange edge glow, near-zero radius, opaque so charts stay legible. ── */
+html[data-variant="4"] .card {
+  position: relative;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: 2px;
+  box-shadow: 4px 4px 0 0 #050403, 0 0 0 1px rgba(255,106,20,0.10);
+  background-image:
+    radial-gradient(60% 50% at 100% 0%, rgba(255,106,20,0.08) 0%, rgba(255,106,20,0) 55%),
+    radial-gradient(rgba(243,237,224,0.03) 1px, rgba(243,237,224,0) 1px);
+  background-size: 100% 100%, 9px 9px;
+  transition: box-shadow 0.12s ease, transform 0.12s ease;
+}
+
+/* Faint inner panel rule. */
+html[data-variant="4"] .card::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  border: 1px solid rgba(243,237,224,0.07);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+/* Orange HUD corner bracket. */
+html[data-variant="4"] .card::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 13px;
+  height: 13px;
+  border-top: 3px solid var(--accent);
+  border-right: 3px solid var(--accent);
+  pointer-events: none;
+}
+
+/* Hover: stamp lifts + neon orange ring/glow. */
+html[data-variant="4"] .card:hover {
+  box-shadow: 6px 6px 0 0 #050403, 0 0 0 1px rgba(255,106,20,0.55), 0 0 18px rgba(255,106,20,0.18);
+  transform: translate(-1px, -1px);
+}
+
+/* ── Card title: condensed uppercase, glowing orange ink. ── */
+html[data-variant="4"] .card-title {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-left: 4px solid var(--accent);
+  padding-left: 8px;
+  margin-bottom: 11px;
+  text-shadow: 0 0 8px rgba(255,106,20,0.35);
+}
+
+/* ── Metric value: heavy condensed cream. ── */
+html[data-variant="4"] .metric-value {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+html[data-variant="4"] .card [style*="fontSize: 32"],
+html[data-variant="4"] .card [style*="fontSize: 22"] {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+/* ── Equipment-label feel: monospaced stamped small text. ── */
+html[data-variant="4"] .metric-label {
+  font-family: "JetBrains Mono", "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* ── P&L colours. ── */
+html[data-variant="4"] .positive { color: var(--green); }
+html[data-variant="4"] .negative { color: var(--red); }
+html[data-variant="4"] .neutral  { color: var(--text-secondary); }
+html[data-variant="4"] .accent   { color: var(--accent); }
+
+/* ── Table rows: warm light hairlines. ── */
+html[data-variant="4"] .table-row {
+  border-bottom: 1px solid rgba(243,237,224,0.12);
+}
+
+/* ── Badges: square stamped chips, monospace, semantic borders. ── */
+html[data-variant="4"] .badge {
+  border-radius: 0;
+  border: 1.5px solid var(--border);
+  font-family: "JetBrains Mono", "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+}
+html[data-variant="4"] .badge-green {
+  background: rgba(63,174,74,0.18);
+  color: var(--green);
+  border-color: var(--green);
+}
+html[data-variant="4"] .badge-red {
+  background: rgba(255,77,61,0.18);
+  color: var(--red);
+  border-color: var(--red);
+}
+html[data-variant="4"] .badge-yellow {
+  background: rgba(245,179,1,0.18);
+  color: var(--yellow);
+  border-color: var(--yellow);
+}
+html[data-variant="4"] .badge-blue {
+  background: rgba(77,155,255,0.18);
+  color: var(--blue);
+  border-color: var(--blue);
+}
+html[data-variant="4"] .badge-purple {
+  background: rgba(255,106,20,0.18);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── Progress bar: dark track, orange-graded fill, square. ── */
+html[data-variant="4"] .progress-bar {
+  border-radius: 0;
+  border: 1.5px solid var(--border);
+  background: #0c0a07;
+  height: 8px;
+}
+html[data-variant="4"] .progress-fill {
+  border-radius: 0;
+  background: var(--accent);
+  background-image: linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%);
+}
+
+/* ── Primary button: square stencil, orange fill, dark ink, neon offset. ── */
+html[data-variant="4"] .btn-primary {
+  border-radius: 0;
+  border: 2px solid var(--accent);
+  background: var(--accent);
+  color: #100d09;
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 3px 3px 0 0 #050403, 0 0 12px rgba(255,106,20,0.25);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+html[data-variant="4"] .btn-primary:hover {
+  background: #100d09;
+  color: var(--accent-light);
+  box-shadow: 1px 1px 0 0 #050403, 0 0 16px rgba(255,106,20,0.4);
+  transform: translate(2px, 2px);
+}
+
+/* ── Tabs: square stencil chips; active = orange stamp. ── */
+html[data-variant="4"] .tab-btn {
+  border-radius: 0;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", sans-serif;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+html[data-variant="4"] .tab-btn.active {
+  background: var(--accent);
+  color: #100d09;
+  box-shadow: 0 0 12px rgba(255,106,20,0.3);
+}
+html[data-variant="4"] .tab-btn:hover:not(.active) {
+  background: rgba(255,106,20,0.12);
+  color: var(--accent-light);
+  border-color: var(--accent);
+}
+
+/* ── Scrollbar: dark track, neon orange thumb, square. ── */
+html[data-variant="4"] ::-webkit-scrollbar-track {
+  background: #14100a;
+}
+html[data-variant="4"] ::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 0;
 }

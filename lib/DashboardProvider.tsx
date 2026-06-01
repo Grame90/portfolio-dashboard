@@ -119,9 +119,10 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, [stockData, cryptoData, stockErr, cryptoErr, stockLd, cryptoLd, stockTickers, cryptoTickers, setQuotes, setQuoteStatus]);
 
   useEffect(() => {
-    // 300ms interval. Simulated price is clamped to ±0.01% of the last
-    // real SWR price (realQuotes) so drift is always bounded.
-    const INTERVAL = 300;
+    // 1s interval. Simulated price is clamped to ±0.01% of the last real SWR
+    // price (realQuotes) so drift is always bounded. Throttled from 300ms → 1s
+    // to cut store-notification churn ~3x with no user-visible difference.
+    const INTERVAL = 1000;
     const MAX_DRIFT = 0.0001; // 0.01%
     const id = setInterval(() => {
       const { quoteStatus } = useQuotesStore.getState();

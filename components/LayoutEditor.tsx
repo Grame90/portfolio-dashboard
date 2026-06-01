@@ -9,8 +9,10 @@ import { usePathname } from "next/navigation";
 // ─── types ────────────────────────────────────────────────────────────────────
 
 interface CardState {
-  dx: number;
-  dy: number;
+  // Legacy: dx/dy used to be supported but caused grid gaps. Now ignored on
+  // load, kept on the type so old saved values don't break parsing.
+  dx?: number;
+  dy?: number;
   w?: number;
   h?: number;
   pinned: boolean;
@@ -21,6 +23,7 @@ type LayoutData = Record<string, CardState>;
 interface CtxValue {
   editing: boolean;
   textScale: number;
+  setEditing?: (v: boolean | ((p: boolean) => boolean)) => void;
 }
 
 // ─── storage ──────────────────────────────────────────────────────────────────
@@ -53,14 +56,16 @@ function CardHandle({ el, cardKey, state, onUpdate }: OverlayProps) {
   // Overlay position is managed imperatively (no state) to avoid render loops
   const overlayRef = useRef<HTMLDivElement>(null);
 
-  // Apply saved layout state to the card DOM element
+  // Apply saved layout state to the card DOM element. Drag (dx/dy) is no
+  // longer applied — only width/height. This keeps cards inside their grid
+  // slots so no empty gaps appear.
   useEffect(() => {
-    const dx = state?.dx ?? 0;
-    const dy = state?.dy ?? 0;
-    el.style.transform  = (dx || dy) ? `translate(${dx}px, ${dy}px)` : "";
-    el.style.zIndex     = (dx || dy) ? "50" : "";
-    el.style.width      = state?.w ? `${state.w}px` : "";
-    el.style.minHeight  = state?.h ? `${state.h}px` : "";
+    // Always clear any leftover transform from older saved states.
+    el.style.transform = "";
+    el.style.zIndex    = "";
+    el.style.width     = state?.w ? `${state.w}px` : "";
+    el.style.height    = state?.h ? `${state.h}px` : "";
+    el.style.minHeight = state?.h ? `${state.h}px` : "";
   }, [el, state]);
 
   // Keep overlay in sync with card position (imperative, no re-renders)
@@ -94,60 +99,49 @@ function CardHandle({ el, cardKey, state, onUpdate }: OverlayProps) {
     return () => clearTimeout(t);
   }, [state, syncOverlay]);
 
-  // ── drag ──
-  const startDrag = (e: React.MouseEvent) => {
-    e.preventDefault(); e.stopPropagation();
-    const initDx = state?.dx ?? 0;
-    const initDy = state?.dy ?? 0;
-    const mx0 = e.clientX, my0 = e.clientY;
-
-    const move = (ev: MouseEvent) => {
-      const dx = initDx + ev.clientX - mx0;
-      const dy = initDy + ev.clientY - my0;
-      el.style.transform = `translate(${dx}px, ${dy}px)`;
-      el.style.zIndex    = "50";
-      syncOverlay();
-    };
-    const up = (ev: MouseEvent) => {
-      const dx = initDx + ev.clientX - mx0;
-      const dy = initDy + ev.clientY - my0;
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      onUpdate(cardKey, { dx, dy });
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  };
-
-  // ── resize ──
-  const startResize = (e: React.MouseEvent) => {
+  // Resize either axis. `axis`: "x" = width-only, "y" = height-only, "xy" = both.
+  const startResize = (axis: "x" | "y" | "xy") => (e: React.PointerEvent) => {
     e.preventDefault(); e.stopPropagation();
     const w0 = el.offsetWidth, h0 = el.offsetHeight;
     const mx0 = e.clientX, my0 = e.clientY;
+    const pointerId = e.pointerId;
+    (e.target as Element).setPointerCapture?.(pointerId);
 
-    const move = (ev: MouseEvent) => {
-      el.style.width     = `${Math.max(160, w0 + ev.clientX - mx0)}px`;
-      el.style.minHeight = `${Math.max(80,  h0 + ev.clientY - my0)}px`;
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      if (axis !== "y") {
+        el.style.width = `${Math.max(160, w0 + ev.clientX - mx0)}px`;
+      }
+      if (axis !== "x") {
+        const h = Math.max(80, h0 + ev.clientY - my0);
+        el.style.height = `${h}px`;
+        el.style.minHeight = `${h}px`;
+      }
       syncOverlay();
     };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
       onUpdate(cardKey, { w: el.offsetWidth, h: el.offsetHeight });
     };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   };
 
   const reset = (e: React.MouseEvent) => {
     e.stopPropagation();
     el.style.transform = ""; el.style.zIndex = "";
-    el.style.width     = ""; el.style.minHeight = "";
-    onUpdate(cardKey, { dx: 0, dy: 0, w: undefined, h: undefined, pinned: false });
+    el.style.width     = "";
+    el.style.height    = "";
+    el.style.minHeight = "";
+    onUpdate(cardKey, { w: undefined, h: undefined, pinned: false });
   };
 
   const isPinned = state?.pinned ?? false;
-  const hasMoved = !!(state?.dx || state?.dy || state?.w || state?.h);
+  const hasMoved = !!(state?.w || state?.h);
   const accent   = isPinned ? "#22c55e" : "#7c3aed";
   const accentBg = isPinned ? "rgba(34,197,94,0.12)" : "rgba(124,58,237,0.12)";
   const accentBd = isPinned ? "rgba(34,197,94,0.45)" : "rgba(124,58,237,0.45)";
@@ -167,51 +161,77 @@ function CardHandle({ el, cardKey, state, onUpdate }: OverlayProps) {
       {/* outline */}
       <div style={{ position: "absolute", inset: 0, border: `1.5px dashed ${accentBd}`, borderRadius: 12, pointerEvents: "none" }} />
 
-      {/* drag strip */}
+      {/* info label (replaces former drag strip — cards no longer reposition) */}
       <div
-        onMouseDown={startDrag}
         style={{
-          position: "absolute", top: 0, left: 0, right: 50, height: 26,
-          cursor: "move", pointerEvents: "all",
-          display: "flex", alignItems: "center", paddingLeft: 8, gap: 6,
+          position: "absolute", top: 0, left: 0, right: 56, height: 28,
+          pointerEvents: "none",
+          display: "flex", alignItems: "center", paddingLeft: 10, gap: 8,
           background: accentBg, borderRadius: "11px 0 0 0", userSelect: "none",
         }}
       >
-        <svg width="10" height="12" viewBox="0 0 10 12" fill={accent}>
-          <circle cx="2.5" cy="2" r="1.2"/><circle cx="7.5" cy="2" r="1.2"/>
-          <circle cx="2.5" cy="6" r="1.2"/><circle cx="7.5" cy="6" r="1.2"/>
-          <circle cx="2.5" cy="10" r="1.2"/><circle cx="7.5" cy="10" r="1.2"/>
-        </svg>
-        <span style={{ fontSize: 10, color: accent, fontWeight: 600 }}>двигать</span>
+        <span style={{ fontSize: 10, color: accent, fontWeight: 600, opacity: 0.85 }}>
+          размер
+        </span>
       </div>
 
       {/* top-right buttons */}
       <div style={{ position: "absolute", top: 0, right: 0, display: "flex", pointerEvents: "all" }}>
         {hasMoved && (
           <button
-            onClick={reset} onMouseDown={e => e.stopPropagation()}
-            title="Сбросить" style={{ ...iconBtnStyle, background: "rgba(239,68,68,0.18)", color: "#ef4444", borderRadius: 0 }}
+            onClick={reset}
+            onPointerDown={e => e.stopPropagation()}
+            title="Сбросить"
+            style={{ ...iconBtnStyle, background: "rgba(239,68,68,0.18)", color: "#ef4444", borderRadius: 0 }}
           >↺</button>
         )}
         <button
           onClick={e => { e.stopPropagation(); onUpdate(cardKey, { pinned: !isPinned }); }}
-          onMouseDown={e => e.stopPropagation()}
+          onPointerDown={e => e.stopPropagation()}
           title={isPinned ? "Открепить" : "Закрепить"}
           style={{ ...iconBtnStyle, background: isPinned ? "rgba(34,197,94,0.18)" : "rgba(124,58,237,0.15)", color: accent, borderRadius: "0 11px 0 4px" }}
         >{isPinned ? "📌" : "📍"}</button>
       </div>
 
-      {/* resize handle */}
+      {/* right-edge handle — width-only */}
       <div
-        onMouseDown={startResize}
+        onPointerDown={startResize("x")}
+        title="Изменить ширину"
         style={{
-          position: "absolute", bottom: 0, right: 0,
-          width: 22, height: 22, cursor: "se-resize", pointerEvents: "all",
-          display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: 4,
+          position: "absolute", top: 32, bottom: 24, right: -3,
+          width: 10, cursor: "ew-resize", pointerEvents: "all", touchAction: "none",
+          display: "flex", alignItems: "center", justifyContent: "center",
         }}
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path d="M9 1L1 9M9 5L5 9" stroke={accent} strokeWidth="1.5" strokeLinecap="round"/>
+        <div style={{ width: 3, height: 28, background: accent, borderRadius: 2, opacity: 0.7 }} />
+      </div>
+
+      {/* bottom-edge handle — height-only */}
+      <div
+        onPointerDown={startResize("y")}
+        title="Изменить высоту"
+        style={{
+          position: "absolute", left: 24, right: 24, bottom: -3,
+          height: 10, cursor: "ns-resize", pointerEvents: "all", touchAction: "none",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <div style={{ height: 3, width: 28, background: accent, borderRadius: 2, opacity: 0.7 }} />
+      </div>
+
+      {/* bottom-right corner — both axes */}
+      <div
+        onPointerDown={startResize("xy")}
+        title="Изменить размер"
+        style={{
+          position: "absolute", bottom: 0, right: 0,
+          width: 28, height: 28, cursor: "se-resize", pointerEvents: "all", touchAction: "none",
+          display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: 5,
+          background: accentBg, borderRadius: "0 0 11px 0",
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
+          <path d="M9 1L1 9M9 5L5 9" stroke={accent} strokeWidth="1.8" strokeLinecap="round"/>
         </svg>
       </div>
     </div>,
@@ -306,7 +326,9 @@ export function LayoutEditorProvider({ children }: { children: React.ReactNode }
     const pageKey = pathname ?? "/";
     Array.from(document.querySelectorAll<HTMLElement>(".card")).forEach(el => {
       el.style.transform = ""; el.style.zIndex = "";
-      el.style.width     = ""; el.style.minHeight = "";
+      el.style.width     = "";
+      el.style.height    = "";
+      el.style.minHeight = "";
     });
     setLayout(prev => {
       const next = { ...prev };
@@ -316,32 +338,28 @@ export function LayoutEditorProvider({ children }: { children: React.ReactNode }
     });
   };
 
+  const resetAllPages = () => {
+    if (!window.confirm("Сбросить расположение и размер ВСЕХ карточек на ВСЕХ страницах?")) return;
+    Array.from(document.querySelectorAll<HTMLElement>(".card")).forEach(el => {
+      el.style.transform = ""; el.style.zIndex = "";
+      el.style.width     = "";
+      el.style.height    = "";
+      el.style.minHeight = "";
+    });
+    setLayout({});
+    saveLayout({});
+  };
+
   // Toolbar rendered via portal into document.body (bypasses overflow/z-index issues)
   const toolbar = mounted ? createPortal(
     <>
-      <button
-        onClick={() => setEditing(p => !p)}
-        style={{
-          position: "fixed", bottom: 24, right: 24, zIndex: 9999,
-          padding: "9px 16px", borderRadius: 12,
-          border: editing ? "1.5px solid #22c55e" : "1.5px solid #1e1e45",
-          background: editing ? "rgba(34,197,94,0.12)" : "#141430",
-          color: editing ? "#22c55e" : "#8888aa",
-          cursor: "pointer", fontSize: 12, fontWeight: 700,
-          boxShadow: editing
-            ? "0 0 20px rgba(34,197,94,0.2), 0 4px 20px rgba(0,0,0,0.5)"
-            : "0 4px 20px rgba(0,0,0,0.5)",
-          display: "flex", alignItems: "center", gap: 8,
-          transition: "all 0.2s", userSelect: "none",
-        }}
-      >
-        <span style={{ fontSize: 14 }}>{editing ? "🔓" : "🔒"}</span>
-        {editing ? "Зафиксировать" : "Настроить панели"}
-      </button>
+      {/* The lock toggle button now lives in the MarketTicker bar (top), next
+          to the gear icon. The bottom-right cluster shows text-scale controls
+          only when editing. */}
 
       {editing && (
         <div style={{
-          position: "fixed", bottom: 24, right: 190, zIndex: 9999,
+          position: "fixed", bottom: 24, right: 24, zIndex: 9999,
           display: "flex", alignItems: "center", gap: 6,
           background: "#141430", border: "1px solid #1e1e45",
           borderRadius: 12, padding: "6px 12px",
@@ -355,19 +373,28 @@ export function LayoutEditorProvider({ children }: { children: React.ReactNode }
           </span>
           <button onClick={() => stepText(1)} style={smBtn}>A+</button>
           <div style={{ width: 1, height: 18, background: "#1e1e45", margin: "0 2px" }} />
-          <button style={{ ...smBtn, color: "#ef4444" }} onClick={resetPage}>↺</button>
+          <button
+            style={{ ...smBtn, color: "#ef4444" }}
+            onClick={resetPage}
+            title="Сбросить расположение карточек на этой странице"
+          >↺</button>
+          <button
+            style={{ ...smBtn, color: "#ef4444", fontSize: 9, fontWeight: 800 }}
+            onClick={resetAllPages}
+            title="Сбросить расположение на ВСЕХ страницах"
+          >↺ВСЁ</button>
         </div>
       )}
 
       {editing && (
         <div style={{
-          position: "fixed", top: 8, left: "50%", transform: "translateX(-50%)",
-          zIndex: 9999, padding: "5px 16px", borderRadius: 20,
-          background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)",
-          fontSize: 11, color: "#22c55e", fontWeight: 600, pointerEvents: "none",
+          position: "fixed", top: 42, left: "50%", transform: "translateX(-50%)",
+          zIndex: 9999, padding: "5px 14px", borderRadius: 20,
+          background: "rgba(124,58,237,0.12)", border: "1px solid rgba(124,58,237,0.35)",
+          fontSize: 11, color: "#a78bfa", fontWeight: 600, pointerEvents: "none",
           whiteSpace: "nowrap",
         }}>
-          ⠿ тяните панель · ↘ resize за угол · 📍 закрепить позицию · ↺ сбросить
+          │ правая грань — ширина · ─ нижняя грань — высота · ↘ угол — оба · 📍 закрепить · ↺ сброс
         </div>
       )}
     </>,
@@ -375,7 +402,7 @@ export function LayoutEditorProvider({ children }: { children: React.ReactNode }
   ) : null;
 
   return (
-    <Ctx.Provider value={{ editing, textScale }}>
+    <Ctx.Provider value={{ editing, textScale, setEditing }}>
       {mounted && textScale !== 1 && (
         <style>{`.card { zoom: ${textScale}; }`}</style>
       )}

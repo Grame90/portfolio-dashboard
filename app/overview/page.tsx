@@ -633,6 +633,7 @@ export default function OverviewPage() {
           historyStats={historyStats}
           historyLength={history.length}
         />
+
       </div>
 
       <LongTermStrategy isMobile={isMobile} />

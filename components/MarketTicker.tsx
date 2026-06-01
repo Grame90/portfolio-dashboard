@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMobile } from "@/lib/useMobile";
+import { useLayoutEditor } from "@/components/LayoutEditor";
 
 export const TICKER_HEIGHT = 34;
 
@@ -111,6 +112,38 @@ const CAT_ORDER: Cat[] = ["crypto", "stock", "ru-stock", "index", "fx", "commodi
 // ─── localStorage ─────────────────────────────────────────────────────────────
 
 const LS_KEY = "mt-enabled-v2";
+const LS_SCALE = "mt-font-scale";
+const LS_CUSTOM = "mt-custom-defs-v1";
+
+// Available font sizes — picked inside the settings panel.
+const FONT_SCALES = [0.85, 1, 1.15, 1.3] as const;
+type FontScale = (typeof FONT_SCALES)[number];
+
+function loadCustomDefs(): Def[] {
+  try {
+    const raw = localStorage.getItem(LS_CUSTOM);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((d): d is Def =>
+      d && typeof d.symbol === "string" && typeof d.api === "string"
+        && typeof d.cat === "string" && typeof d.name === "string",
+    );
+  } catch { return []; }
+}
+
+function saveCustomDefs(defs: Def[]) {
+  try { localStorage.setItem(LS_CUSTOM, JSON.stringify(defs)); } catch {}
+}
+
+// Heuristic: detect category from a user-typed ticker.
+function detectCategory(symbol: string): Cat {
+  const s = symbol.trim().toUpperCase();
+  const crypto = new Set(["BTC","ETH","SOL","XRP","ADA","DOGE","AVAX","BNB","MATIC","DOT","LINK","UNI","ATOM","LTC","BCH","TRX","TON","APT","ARB","OP","SUI","NEAR","ICP","FIL","HBAR","VET","ETC","AAVE","MKR","SNX","CRV","LDO","GRT","ENS","SAND","MANA","AXS","WLD","JUP","PYTH","PEPE","FLOKI","WIF","BONK","XMR","ZEC","DASH","XLM","EOS","IOTA","NEO","WAVES","THETA","XTZ"]);
+  if (crypto.has(s)) return "crypto";
+  if (s.endsWith(".ME") || s.endsWith(".MM")) return "ru-stock";
+  return "stock";
+}
 
 const DEFAULT_ENABLED = new Set([
   "BTC","ETH","SOL","XRP",
@@ -170,7 +203,7 @@ function hasPrefix(cat: Cat) {
 
 // ─── Entry ────────────────────────────────────────────────────────────────────
 
-function Entry({ item }: { item: Item }) {
+function Entry({ item, scale }: { item: Item; scale: number }) {
   const up  = (item.change ?? 0) >= 0;
   const clr = item.change === null ? "#8888aa" : up ? "#22c55e" : "#ef4444";
   const catClr = CAT_COLOR[item.def.cat];
@@ -183,14 +216,14 @@ function Entry({ item }: { item: Item }) {
       whiteSpace: "nowrap",
     }}>
       <span style={{ width: 4, height: 4, borderRadius: "50%", background: catClr, flexShrink: 0 }} />
-      <span style={{ fontSize: 10, fontWeight: 800, color: "#9090b0", letterSpacing: "0.09em" }}>
+      <span style={{ fontSize: 10 * scale, fontWeight: 800, color: "#9090b0", letterSpacing: "0.09em" }}>
         {item.def.symbol}
       </span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>
+      <span style={{ fontSize: 12 * scale, fontWeight: 700, color: "#fff" }}>
         {hasPrefix(item.def.cat) ? "$" : ""}{fmtPrice(item.price, item.def.cat)}
       </span>
       {item.change !== null && (
-        <span style={{ fontSize: 10, fontWeight: 700, color: clr }}>
+        <span style={{ fontSize: 10 * scale, fontWeight: 700, color: clr }}>
           {up ? "▲" : "▼"} {Math.abs(item.change).toFixed(2)}%
         </span>
       )}
@@ -201,17 +234,33 @@ function Entry({ item }: { item: Item }) {
 // ─── SettingsPanel ────────────────────────────────────────────────────────────
 
 function SettingsPanel({
-  draft, onToggle, onReset, onClose, left,
+  draft, allDefs, customDefs, fontScale, onToggle, onReset, onClose, onAddCustom, onRemoveCustom, onFontScaleChange, left,
 }: {
   draft: Set<string>;
+  allDefs: Def[];
+  customDefs: Def[];
+  fontScale: FontScale;
   onToggle: (symbol: string) => void;
   onReset: () => void;
   onClose: () => void;
+  onAddCustom: (symbol: string) => void;
+  onRemoveCustom: (symbol: string) => void;
+  onFontScaleChange: (s: FontScale) => void;
   left: number;
 }) {
+  const [newTicker, setNewTicker] = useState("");
+
+  function commitAdd() {
+    const s = newTicker.trim().toUpperCase();
+    if (!s) return;
+    onAddCustom(s);
+    setNewTicker("");
+  }
+
   return (
     <div
       onClick={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
       style={{
         position: "fixed",
         top: TICKER_HEIGHT,
@@ -229,7 +278,7 @@ function SettingsPanel({
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", letterSpacing: "0.08em" }}>
-          НАСТРОЙКА ТИКЕРОВ
+          НАСТРОЙКА БЕГУЩЕЙ СТРОКИ
         </span>
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -243,10 +292,40 @@ function SettingsPanel({
         </div>
       </div>
 
+      {/* Font size selector */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 9, fontWeight: 900, color: "#a78bfa", letterSpacing: "0.12em", marginBottom: 6, textTransform: "uppercase" }}>
+          Размер текста
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {FONT_SCALES.map(s => {
+            const active = s === fontScale;
+            return (
+              <button
+                key={s}
+                onClick={() => onFontScaleChange(s)}
+                style={{
+                  padding: "5px 14px", borderRadius: 6, fontWeight: 700,
+                  cursor: "pointer", border: "1px solid",
+                  borderColor: active ? "#a78bfa" : "#222244",
+                  background: active ? "rgba(167,139,250,0.18)" : "transparent",
+                  color: active ? "#a78bfa" : "#555577",
+                  transition: "all 0.15s",
+                  fontSize: Math.round(11 * s),
+                }}
+              >
+                {Math.round(s * 100)}%
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Grid by category */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {CAT_ORDER.map(cat => {
-          const defs = ALL.filter(d => d.cat === cat);
+          const defs = allDefs.filter(d => d.cat === cat);
+          if (defs.length === 0) return null;
           return (
             <div key={cat}>
               <div style={{
@@ -258,11 +337,18 @@ function SettingsPanel({
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {defs.map(d => {
                   const on = draft.has(d.symbol);
+                  const isCustom = customDefs.some(c => c.symbol === d.symbol);
                   return (
                     <button
                       key={d.symbol}
                       onClick={() => onToggle(d.symbol)}
-                      title={d.name}
+                      onContextMenu={(e) => {
+                        if (isCustom) {
+                          e.preventDefault();
+                          if (window.confirm(`Удалить свой тикер ${d.symbol}?`)) onRemoveCustom(d.symbol);
+                        }
+                      }}
+                      title={isCustom ? `${d.name} (свой — ПКМ: удалить)` : d.name}
                       style={{
                         padding: "3px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
                         cursor: "pointer", border: "1px solid",
@@ -270,9 +356,10 @@ function SettingsPanel({
                         background: on ? `${CAT_COLOR[cat]}22` : "transparent",
                         color: on ? CAT_COLOR[cat] : "#555577",
                         transition: "all 0.15s",
+                        position: "relative",
                       }}
                     >
-                      {d.symbol}
+                      {isCustom ? "★ " : ""}{d.symbol}
                     </button>
                   );
                 })}
@@ -280,6 +367,43 @@ function SettingsPanel({
             </div>
           );
         })}
+      </div>
+
+      {/* Add custom ticker */}
+      <div style={{
+        marginTop: 16, paddingTop: 14,
+        borderTop: "1px solid rgba(255,255,255,0.08)",
+      }}>
+        <div style={{ fontSize: 9, fontWeight: 900, color: "#22c55e", letterSpacing: "0.12em", marginBottom: 6, textTransform: "uppercase" }}>
+          Добавить свой тикер
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            value={newTicker}
+            onChange={(e) => setNewTicker(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") commitAdd(); }}
+            placeholder="например AMD, GOOG, SBER.ME, BTC"
+            style={{
+              flex: 1, padding: "6px 10px", borderRadius: 6,
+              border: "1px solid #333366", background: "#0b0b20",
+              color: "#fff", fontSize: 12, outline: "none",
+            }}
+          />
+          <button
+            onClick={commitAdd}
+            disabled={!newTicker.trim()}
+            style={{
+              padding: "6px 14px", borderRadius: 6, border: "none",
+              background: newTicker.trim() ? "#22c55e" : "#333366",
+              color: "#fff", fontSize: 11, fontWeight: 700,
+              cursor: newTicker.trim() ? "pointer" : "not-allowed",
+            }}
+          >+ Добавить</button>
+        </div>
+        <div style={{ fontSize: 10, color: "#555577", marginTop: 6 }}>
+          После добавления он появится в нужной категории с пометкой ★ — нажми чтобы включить в строку.
+          Удалить: ПКМ по своему тикеру.
+        </div>
       </div>
 
       <div style={{ marginTop: 12, fontSize: 10, color: "#555577" }}>
@@ -294,6 +418,7 @@ function SettingsPanel({
 export default function MarketTicker() {
   const isMobile = useMobile();
   const left = isMobile ? 0 : 72;
+  const { editing: layoutEditing, setEditing: setLayoutEditing } = useLayoutEditor();
 
   const [mounted,       setMounted]       = useState(false);
   const [items,         setItems]         = useState<Item[]>([]);
@@ -301,6 +426,31 @@ export default function MarketTicker() {
   const [settingsOpen,  setSettingsOpen]  = useState(false);
   const [enabled,       setEnabled]       = useState<Set<string>>(DEFAULT_ENABLED);
   const [draft,         setDraft]         = useState<Set<string>>(DEFAULT_ENABLED);
+  const [fontScale,     setFontScale]     = useState<FontScale>(1);
+
+  // Load font scale from localStorage
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_SCALE);
+      if (!raw) return;
+      const n = Number(raw);
+      const match = FONT_SCALES.find(s => s === n);
+      if (match) setFontScale(match);
+    } catch {}
+  }, []);
+
+  function cycleFontScale() {
+    setFontScale(prev => {
+      const idx = FONT_SCALES.indexOf(prev);
+      const next = FONT_SCALES[(idx + 1) % FONT_SCALES.length];
+      try { localStorage.setItem(LS_SCALE, String(next)); } catch {}
+      return next;
+    });
+  }
+
+  // Custom defs added by the user via the settings input.
+  const [customDefs, setCustomDefs] = useState<Def[]>([]);
+  const allDefs = useMemo(() => [...ALL, ...customDefs], [customDefs]);
 
   // Load from localStorage after mount (enabled set + cached prices as initial state)
   useEffect(() => {
@@ -308,12 +458,47 @@ export default function MarketTicker() {
     const e = loadEnabled();
     setEnabled(e);
     setDraft(new Set(e));
-    const cached = loadPriceCache(ALL.filter(d => e.has(d.symbol)));
+    const customs = loadCustomDefs();
+    setCustomDefs(customs);
+    const cached = loadPriceCache([...ALL, ...customs].filter(d => e.has(d.symbol)));
     if (cached.length) setItems(cached);
   }, []);
 
+  function addCustomDef(symbol: string) {
+    const sym = symbol.trim().toUpperCase();
+    if (!sym) return;
+    if (allDefs.some(d => d.symbol === sym)) {
+      // Already exists — just enable it in the draft.
+      setDraft(prev => new Set(prev).add(sym));
+      return;
+    }
+    const cat = detectCategory(sym);
+    const def: Def = { symbol: sym, api: sym, cat, name: sym };
+    const nextCustom = [...customDefs, def];
+    setCustomDefs(nextCustom);
+    saveCustomDefs(nextCustom);
+    setDraft(prev => new Set(prev).add(sym));
+  }
+
+  function removeCustomDef(symbol: string) {
+    const next = customDefs.filter(d => d.symbol !== symbol);
+    setCustomDefs(next);
+    saveCustomDefs(next);
+    setDraft(prev => {
+      const n = new Set(prev);
+      n.delete(symbol);
+      return n;
+    });
+    setEnabled(prev => {
+      const n = new Set(prev);
+      n.delete(symbol);
+      saveEnabled(n);
+      return n;
+    });
+  }
+
   // Derive active defs in catalog order (maintains stable scroll order)
-  const activeDefs = ALL.filter(d => enabled.has(d.symbol));
+  const activeDefs = allDefs.filter(d => enabled.has(d.symbol));
 
   const load = useCallback(async (defs: Def[]) => {
     if (!defs.length) { setItems([]); return; }
@@ -374,7 +559,7 @@ export default function MarketTicker() {
 
   // Auto-refresh every 60s
   useEffect(() => {
-    const id = setInterval(() => load(ALL.filter(d => enabled.has(d.symbol))), 60_000);
+    const id = setInterval(() => load(allDefs.filter(d => enabled.has(d.symbol))), 60_000);
     return () => clearInterval(id);
   }, [enabled, load]);
 
@@ -449,8 +634,8 @@ export default function MarketTicker() {
         <div style={{ flex: 1, overflow: "hidden", height: "100%", display: "flex", alignItems: "center" }}>
           {mounted && items.length > 0 ? (
             <div className="ticker-track">
-              {items.map((item, i) => <Entry key={i} item={item} />)}
-              {items.map((item, i) => <Entry key={`d${i}`} item={item} />)}
+              {items.map((item, i) => <Entry key={i} item={item} scale={fontScale} />)}
+              {items.map((item, i) => <Entry key={`d${i}`} item={item} scale={fontScale} />)}
             </div>
           ) : (
             <span style={{ fontSize: 11, color: "#444466", padding: "0 16px" }}>
@@ -458,6 +643,24 @@ export default function MarketTicker() {
             </span>
           )}
         </div>
+
+        {/* layout-editor lock toggle (matches gear styling) */}
+        {setLayoutEditing && (
+          <button
+            onMouseDown={e => { e.stopPropagation(); setLayoutEditing(p => !p); }}
+            title={layoutEditing ? "Зафиксировать панели" : "Настроить панели"}
+            style={{
+              flexShrink: 0, height: "100%",
+              padding: "0 12px", border: "none",
+              borderLeft: "1px solid rgba(255,255,255,0.06)",
+              background: layoutEditing ? "rgba(124,58,237,0.2)" : "transparent",
+              color: layoutEditing ? "#a78bfa" : "#555577",
+              cursor: "pointer", fontSize: 14,
+              display: "flex", alignItems: "center",
+              transition: "all 0.15s",
+            }}
+          >{layoutEditing ? "🔓" : "🔒"}</button>
+        )}
 
         {/* settings button */}
         <button
@@ -495,14 +698,23 @@ export default function MarketTicker() {
         <SettingsPanel
           draft={draft}
           left={left}
+          allDefs={allDefs}
+          customDefs={customDefs}
+          fontScale={fontScale}
+          onFontScaleChange={(s) => {
+            setFontScale(s);
+            try { localStorage.setItem(LS_SCALE, String(s)); } catch {}
+          }}
           onToggle={sym => {
             setDraft(prev => {
               const next = new Set(prev);
-              next.has(sym) ? next.delete(sym) : next.add(sym);
+              if (next.has(sym)) next.delete(sym); else next.add(sym);
               return next;
             });
           }}
           onReset={() => setDraft(new Set(DEFAULT_ENABLED))}
+          onAddCustom={addCustomDef}
+          onRemoveCustom={removeCustomDef}
           onClose={() => {
             applyDraft(draft);
             setSettingsOpen(false);

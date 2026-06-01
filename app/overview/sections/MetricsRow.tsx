@@ -37,10 +37,21 @@ interface BrokerRowProps {
   pct: number;
 }
 
+function fmtCompactSigned(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n >= 0 ? "+" : "−";
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 10_000) return `${sign}${Math.round(abs / 1000)}K`;
+  return `${sign}${Math.round(abs).toLocaleString("en-US")}`;
+}
+
 function BrokerRow({ name, value, pct }: BrokerRowProps) {
   const color = value >= 0 ? "#22c55e" : "#ef4444";
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      gap: 6, minWidth: 0, overflow: "hidden",
+    }}>
       <span
         title={name}
         style={{
@@ -48,15 +59,19 @@ function BrokerRow({ name, value, pct }: BrokerRowProps) {
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
-          maxWidth: "55%",
+          flex: "1 1 auto",
+          minWidth: 0,
         }}
       >
         {name}
       </span>
-      <span style={{ fontWeight: 600, color, fontVariantNumeric: "tabular-nums" }}>
-        {value >= 0 ? "+" : ""}{Math.round(value).toLocaleString("en-US")}
+      <span style={{
+        fontWeight: 600, color, fontVariantNumeric: "tabular-nums",
+        flexShrink: 0, whiteSpace: "nowrap",
+      }}>
+        {fmtCompactSigned(value)}
         <span style={{ fontSize: 9, marginLeft: 3, opacity: 0.85 }}>
-          ({pct >= 0 ? "+" : ""}{pct.toFixed(2)}%)
+          ({pct >= 0 ? "+" : ""}{pct.toFixed(1)}%)
         </span>
       </span>
     </div>
@@ -82,7 +97,7 @@ export function MetricsRow({
     { label: "Неделя",        key: "week",    d: periodPerf.week },
     { label: "Месяц",         key: "month",   d: periodPerf.month },
     { label: "С начала года", key: "ytd",     d: periodPerf.ytd },
-    { label: "Всё время",     key: "allTime", d: { value: totalPnl, pct: totalPnlPct } },
+    { label: "Всё время",     key: "allTime", d: { value: Math.round(totalPnl), pct: totalPnlPct } },
   ];
 
   return (
@@ -125,7 +140,7 @@ export function MetricsRow({
           ) : (
             <>
               <div className={d.value >= 0 ? "positive" : "negative"} style={{ fontSize: 22, fontWeight: 700 }}>
-                {d.value >= 0 ? "+" : ""}{Math.abs(d.value).toLocaleString("en-US")}
+                {d.value >= 0 ? "+" : ""}{Math.round(Math.abs(d.value)).toLocaleString("en-US")}
               </div>
               <div className={d.value >= 0 ? "positive" : "negative"} style={{ fontSize: 14 }}>
                 {d.pct >= 0 ? "+" : ""}{Math.abs(d.pct).toFixed(2)}%

@@ -27,6 +27,7 @@ import {
 } from "./constants";
 import { recompute, dAgoLabel, periodCutoff, fmtDate } from "./utils";
 import { SummaryRow } from "./sections/SummaryRow";
+import { TelegramFeed } from "@/components/TelegramFeed";
 import { PositionsTable } from "./sections/PositionsTable";
 import { TargetStructure } from "./sections/TargetStructure";
 import { BuyLadder } from "./sections/BuyLadder";
@@ -498,6 +499,14 @@ export default function PortfolioPage() {
       <PageHeader title="ПОРТФЕЛЬ" subtitle="Главная сводка и управление портфелем" showSnapshot titleBadge={<DailyAlertBadge />} />
 
       <div style={{ padding: isMobile ? "12px" : "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+        <TelegramFeed
+          channel="markettwits"
+          title="MarketTwits — новости рынка (за сутки)"
+          maxHeight={400}
+          showPhotos={false}
+          sinceHours={24}
+        />
+
         <SummaryRow
           positions={positions}
           portfolioTotal={portfolioTotal}

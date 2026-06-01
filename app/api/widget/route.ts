@@ -147,43 +147,76 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // 4. Compute totals
+  // 4. Compute totals + per-position rows
   let total = 0;
   let dayUsd = 0;
+  const rows: { ticker: string; avgPrice: number; value: number; dayUsd: number; dayPct: number; type: string }[] = [];
+
   for (const p of positions) {
     if (p.type === "Кэш") {
-      total += p.qty * p.avgPrice;
+      const value = p.qty * p.avgPrice;
+      total += value;
+      rows.push({ ticker: p.ticker, avgPrice: p.avgPrice, value, dayUsd: 0, dayPct: 0, type: p.type });
       continue;
     }
     const q = quotes[p.ticker];
     if (!q) {
-      total += p.qty * p.avgPrice;
+      const value = p.qty * p.avgPrice;
+      total += value;
+      rows.push({ ticker: p.ticker, avgPrice: p.avgPrice, value, dayUsd: 0, dayPct: 0, type: p.type });
       continue;
     }
-    total += p.qty * q.current;
+    const value = p.qty * q.current;
+    total += value;
+    let posDayUsd = 0;
+    let posDayPct = 0;
     if (q.previousClose > 0) {
       const rel = Math.abs(q.current - q.previousClose) / q.previousClose;
-      // Guard against bad feed spikes
       if (rel <= 0.5) {
-        dayUsd += p.qty * (q.current - q.previousClose);
+        posDayUsd = p.qty * (q.current - q.previousClose);
+        posDayPct = ((q.current - q.previousClose) / q.previousClose) * 100;
+        dayUsd += posDayUsd;
       }
     }
+    rows.push({
+      ticker: p.ticker,
+      avgPrice: p.avgPrice,
+      value,
+      dayUsd: posDayUsd,
+      dayPct: posDayPct,
+      type: p.type,
+    });
   }
   const prevTotal = total - dayUsd;
   const dayPct = prevTotal > 0 ? (dayUsd / prevTotal) * 100 : 0;
 
-  return NextResponse.json(
-    {
-      total: Math.round(total * 100) / 100,
-      dayUsd: Math.round(dayUsd * 100) / 100,
-      dayPct: Math.round(dayPct * 100) / 100,
-      asOf: new Date().toISOString(),
+  const detail = req.nextUrl.searchParams.get("detail");
+  const includeRows = detail === "1" || detail === "true";
+
+  const body: Record<string, unknown> = {
+    total: Math.round(total * 100) / 100,
+    dayUsd: Math.round(dayUsd * 100) / 100,
+    dayPct: Math.round(dayPct * 100) / 100,
+    asOf: new Date().toISOString(),
+  };
+
+  if (includeRows) {
+    body.positions = rows
+      .map(r => ({
+        ticker: r.ticker,
+        avgPrice: Math.round(r.avgPrice * 100) / 100,
+        sharePct: total > 0 ? Math.round((r.value / total) * 10000) / 100 : 0,
+        dayUsd: Math.round(r.dayUsd),
+        dayPct: Math.round(r.dayPct * 100) / 100,
+        type: r.type,
+      }))
+      .sort((a, b) => b.sharePct - a.sharePct);
+  }
+
+  return NextResponse.json(body, {
+    headers: {
+      // Cache for 60s so the widget can refresh every minute without hammering
+      "Cache-Control": "public, max-age=60, s-maxage=60",
     },
-    {
-      headers: {
-        // Cache for 60s so the widget can refresh every minute without hammering
-        "Cache-Control": "public, max-age=60, s-maxage=60",
-      },
-    },
-  );
+  });
 }

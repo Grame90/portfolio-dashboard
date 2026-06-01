@@ -19,6 +19,7 @@ import {
   pearsonCorr,
   CorrelationCell,
 } from "./analytics-shared";
+import MetricsRow from "./sections/MetricsRow";
 
 export default function AnalyticsPage() {
   const isMobile = useMobile();
@@ -303,23 +304,18 @@ export default function AnalyticsPage() {
 
       <div style={{ padding: isMobile ? "12px" : "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Top metrics */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(7, 1fr)", gap: 10 }}>
-          {[
-            { label: "Общая прибыль (USD)", value: `${app.totalPnl >= 0 ? "+" : ""}${Math.round(app.totalPnl).toLocaleString("en-US")}`, sub: `${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnl >= 0 ? "#22c55e" : "#ef4444" },
-            { label: "Средняя доходность (YTD)", value: `${app.totalPnlPct >= 0 ? "+" : ""}${app.totalPnlPct.toFixed(2)}%`, color: app.totalPnlPct >= 0 ? "#22c55e" : "#ef4444" },
-            { label: "Волатильность портфеля", value: histLoading ? "…" : `${liveVol30d}%`, sub: "Умеренная", color: "#f59e0b" },
-            { label: "Коэффициент Шарпа", value: histLoading ? "…" : (analyticsMetrics?.sharpe ?? "–"), sub: "Хороший", color: "#22c55e" },
-            { label: "Макс. просадка (истор.)", value: histLoading ? "…" : `${analyticsMetrics?.maxDrawdown ?? drawdownStats.max.toFixed(2)}%`, sub: "Умеренная", color: "#ef4444" },
-            { label: "Бета (рынок)", value: weightedBeta.toFixed(2), sub: betaSub },
-            { label: "Корреляция с S&P 500", value: spyCorrelation.toString(), sub: spyCorrelation >= 0.75 ? "Высокая" : spyCorrelation >= 0.5 ? "Средняя" : "Низкая", color: "#f59e0b" },
-          ].map((m) => (
-            <div key={m.label} className="card" style={{ padding: 12 }}>
-              <div style={{ fontSize: 10, color: "var(--text-secondary)", marginBottom: 4 }}>{m.label}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: m.color }}>{m.value}</div>
-              {m.sub && <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{m.sub}</div>}
-            </div>
-          ))}
-        </div>
+        <MetricsRow
+          isMobile={isMobile}
+          totalPnl={app.totalPnl}
+          totalPnlPct={app.totalPnlPct}
+          histLoading={histLoading}
+          liveVol30d={liveVol30d}
+          analyticsMetrics={analyticsMetrics}
+          drawdownStatsMax={drawdownStats.max}
+          weightedBeta={weightedBeta}
+          betaSub={betaSub}
+          spyCorrelation={spyCorrelation}
+        />
 
         {/* Portfolio dynamics vs benchmarks */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.5fr 1fr 1fr", gap: 12 }}>

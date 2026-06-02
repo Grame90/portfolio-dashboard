@@ -237,8 +237,8 @@ export function Badge() {
                 </span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {dip.instruments.map((ins) => (
-                  <div key={ins.ticker} style={{
+                {dip.instruments.map((ins, i) => (
+                  <div key={`${ins.ticker}-${i}`} style={{
                     border: `1px solid ${dipColor(ins.signal)}30`,
                     background: dipBg(ins.signal),
                     borderRadius: 7, padding: "6px 8px",

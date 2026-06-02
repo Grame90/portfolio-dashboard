@@ -537,8 +537,8 @@ export default function StrategyPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {liveSignals.length === 0 ? (
                 <div style={{ color: "var(--text-muted)", fontSize: 12, padding: "8px 0" }}>Добавьте позиции для AI-сигналов</div>
-              ) : liveSignals.map((s) => (
-                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: 8 }}>
+              ) : liveSignals.map((s, i) => (
+                <div key={`${s.ticker}-${i}`} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 10px", background: "var(--bg-secondary)", borderRadius: 8 }}>
                   <div style={{ width: 20, height: 20, borderRadius: "50%", background: s.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, color: "white" }}>
                     {s.signal === "ДОКУПИТЬ" ? "↑" : s.signal === "СНИЗИТЬ" ? "↓" : s.signal === "ДЕРЖАТЬ" ? "→" : "✕"}
                   </div>

@@ -40,7 +40,7 @@ type ThemeId = ColorId | `light-${ColorId}`;
 
 // Design variants — 4 radically different looks (+ default). Form, font, texture,
 // surfaces. Wired to <html data-variant="N">; styles live in globals.css.
-const DESIGN_VARIANTS = ["Классика", "Стекло", "Киберпанк", "Кибер·тьма", "Минимал"] as const;
+const DESIGN_VARIANTS = ["Классика", "Стекло", "Киберпанк", "Кибер·тьма", "Стадион"] as const;
 
 
 export default function Sidebar() {

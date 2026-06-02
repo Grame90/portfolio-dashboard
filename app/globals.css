@@ -382,7 +382,6 @@ html[data-variant="2"] .btn-primary {
 html[data-variant="2"] .tab-btn { border-radius: 10px; }
 html[data-variant="2"] .badge { border-radius: 8px; backdrop-filter: blur(6px); }
 
-/* variant-3+4 rebuild trigger */
 /* ════════════════════════════════════════════════════════════════════
    VARIANT 3 · 工業 — JAPANESE TECHWEAR PRINT POSTER
    Warm cream paper, industrial-orange + charcoal ink, stamped offset
@@ -868,4 +867,278 @@ html[data-variant="4"] ::-webkit-scrollbar-track {
 html[data-variant="4"] ::-webkit-scrollbar-thumb {
   background: var(--accent);
   border-radius: 0;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   VARIANT 5 · FENERBAHÇE — STADIUM AT NIGHT (navy + floodlight yellow)
+   Deep-navy night stadium: top floodlight bloom, faint lighter-blue
+   running-track curves at the bottom, diagonal yellow/navy brush-stroke
+   streaks. Bright Fenerbahçe yellow accents, white text, condensed-italic
+   sports-poster headlines, and a GLOWING yellow featured/hero card.
+   Token overrides drive the navy+yellow look into inline-styled blocks.
+   ════════════════════════════════════════════════════════════════════ */
+
+html[data-variant="5"] {
+  --bg-primary: #0a1530;
+  --bg-secondary: #0d1c3e;
+  --bg-card: #102347;
+  --bg-card-hover: #143055;
+  --border: #1c3a6e;
+  --accent: #ffd400;
+  --accent-light: #ffe24d;
+  --text-primary: #ffffff;
+  --text-secondary: #9fb3d4;
+  --text-muted: #5a7099;
+  --green: #38d66b;
+  --red: #ff5563;
+  --yellow: #ffd400;
+  --blue: #3b82f6;
+}
+
+/* Stadium field: navy base + floodlight bloom + side glows + bottom track
+   arcs + diagonal yellow/navy brush streaks + micro-grit (gradients only). */
+html[data-variant="5"] body {
+  background-color: #0a1530;
+  background-image:
+    radial-gradient(70% 48% at 50% 0%, rgba(255,226,77,0.20) 0%, rgba(255,212,0,0.07) 38%, rgba(255,212,0,0) 68%),
+    radial-gradient(40% 30% at 88% 6%, rgba(255,212,0,0.10) 0%, rgba(255,212,0,0) 60%),
+    radial-gradient(40% 30% at 12% 8%, rgba(159,179,212,0.10) 0%, rgba(159,179,212,0) 60%),
+    radial-gradient(150% 70% at 50% 122%, rgba(120,170,255,0.16) 0%, rgba(120,170,255,0.06) 34%, rgba(120,170,255,0) 60%),
+    radial-gradient(150% 60% at 50% 132%, rgba(159,179,212,0.10) 0%, rgba(159,179,212,0) 50%),
+    repeating-linear-gradient(122deg, rgba(255,212,0,0.05) 0px, rgba(255,212,0,0.05) 3px, rgba(255,212,0,0) 3px, rgba(255,212,0,0) 46px),
+    repeating-linear-gradient(122deg, rgba(8,16,38,0.55) 0px, rgba(8,16,38,0.55) 7px, rgba(8,16,38,0) 7px, rgba(8,16,38,0) 90px),
+    repeating-linear-gradient(58deg, rgba(255,226,77,0.035) 0px, rgba(255,226,77,0.035) 2px, rgba(255,226,77,0) 2px, rgba(255,226,77,0) 70px),
+    linear-gradient(180deg, #0c1a3c 0%, #0a1530 46%, #081225 100%);
+  background-size:
+    100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  background-position:
+    0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0, 0 0;
+  background-attachment: fixed, fixed, fixed, fixed, fixed, fixed, fixed, fixed, fixed;
+  background-repeat: no-repeat;
+  color: var(--text-primary);
+}
+
+/* Cards = rounded navy panels: thin navy border, opaque fill (charts stay
+   legible), inner-top highlight + faint yellow brush texture + depth. */
+html[data-variant="5"] .card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  box-shadow:
+    0 10px 26px rgba(4,9,24,0.55),
+    inset 0 1px 0 rgba(255,255,255,0.06);
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 16%),
+    radial-gradient(120% 60% at 50% 0%, rgba(255,212,0,0.05) 0%, rgba(255,212,0,0) 55%),
+    repeating-linear-gradient(122deg, rgba(255,212,0,0.028) 0px, rgba(255,212,0,0.028) 2px, rgba(255,212,0,0) 2px, rgba(255,212,0,0) 30px);
+  background-size: 100% 100%, 100% 100%, 100% 100%;
+  background-repeat: no-repeat;
+  transition: box-shadow 0.22s ease, transform 0.22s ease, border-color 0.22s ease;
+}
+
+/* Inner top highlight rule — thin floodlit edge along the panel top. */
+html[data-variant="5"] .card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,226,77,0) 0%, rgba(255,226,77,0.35) 50%, rgba(255,226,77,0) 100%);
+  pointer-events: none;
+}
+
+/* Hover: featured-poster glow — yellow ring + soft halo + lift. */
+html[data-variant="5"] .card:hover {
+  border-color: var(--accent);
+  box-shadow:
+    0 16px 34px rgba(4,9,24,0.6),
+    0 0 0 1px rgba(255,212,0,0.7),
+    0 0 26px rgba(255,212,0,0.28),
+    inset 0 1px 0 rgba(255,255,255,0.1);
+  transform: translateY(-3px);
+}
+
+/* Featured HERO card (portfolio total): always lit like the poster's top
+   row — glowing yellow border + halo + brighter floodlit fill. */
+html[data-variant="5"] .card[style*="borderLeft"] {
+  border: 1px solid var(--accent);
+  border-left: 3px solid var(--accent) !important;
+  box-shadow:
+    0 14px 32px rgba(4,9,24,0.6),
+    0 0 0 1px rgba(255,212,0,0.45),
+    0 0 30px rgba(255,212,0,0.3),
+    inset 0 1px 0 rgba(255,255,255,0.1);
+  background-image:
+    linear-gradient(180deg, rgba(255,226,77,0.1) 0%, rgba(255,226,77,0) 30%),
+    radial-gradient(130% 80% at 50% 0%, rgba(255,212,0,0.14) 0%, rgba(255,212,0,0) 60%),
+    repeating-linear-gradient(122deg, rgba(255,212,0,0.03) 0px, rgba(255,212,0,0.03) 2px, rgba(255,212,0,0) 2px, rgba(255,212,0,0) 30px);
+  background-size: 100% 100%, 100% 100%, 100% 100%;
+  background-repeat: no-repeat;
+}
+html[data-variant="5"] .card[style*="borderLeft"]:hover {
+  box-shadow:
+    0 18px 38px rgba(4,9,24,0.65),
+    0 0 0 1px rgba(255,212,0,0.85),
+    0 0 38px rgba(255,212,0,0.42),
+    inset 0 1px 0 rgba(255,255,255,0.14);
+  transform: translateY(-3px);
+}
+
+/* Card title: condensed italic uppercase, bright yellow, wide track. */
+html[data-variant="5"] .card-title {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  font-style: italic;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 11px;
+  text-shadow: 0 0 10px rgba(255,212,0,0.35);
+}
+
+/* Metric value: heavy condensed italic near-white, large. */
+html[data-variant="5"] .metric-value {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+/* Hero total + period values (inline fontSize:32 / 22) = poster numerals. */
+html[data-variant="5"] .card [style*="fontSize: 32"],
+html[data-variant="5"] .card [style*="fontSize: 22"] {
+  font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Impact, sans-serif;
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+html[data-variant="5"] .card[style*="borderLeft"] [style*="fontSize: 32"] {
+  text-shadow: 0 0 18px rgba(255,255,255,0.22);
+}
+
+/* Metric label: clean sans caps, muted steel-blue. */
+html[data-variant="5"] .metric-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* P&L colours: vivid on navy. */
+html[data-variant="5"] .positive { color: var(--green); }
+html[data-variant="5"] .negative { color: var(--red); }
+html[data-variant="5"] .neutral  { color: var(--text-secondary); }
+html[data-variant="5"] .accent   { color: var(--accent-light); }
+
+/* Table rows: faint steel-blue hairlines. */
+html[data-variant="5"] .table-row {
+  border-bottom: 1px solid rgba(159,179,212,0.16);
+}
+
+/* Badges: rounded PILLS, semantic colours, yellow default glow. */
+html[data-variant="5"] .badge {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 10px;
+}
+html[data-variant="5"] .badge-green {
+  background: rgba(56,214,107,0.16);
+  color: var(--green);
+  border-color: rgba(56,214,107,0.55);
+}
+html[data-variant="5"] .badge-red {
+  background: rgba(255,85,99,0.16);
+  color: var(--red);
+  border-color: rgba(255,85,99,0.55);
+}
+html[data-variant="5"] .badge-yellow {
+  background: rgba(255,212,0,0.18);
+  color: var(--accent);
+  border-color: rgba(255,212,0,0.6);
+  box-shadow: 0 0 10px rgba(255,212,0,0.2);
+}
+html[data-variant="5"] .badge-blue {
+  background: rgba(59,130,246,0.18);
+  color: #7fb0ff;
+  border-color: rgba(59,130,246,0.55);
+}
+html[data-variant="5"] .badge-purple {
+  background: rgba(255,212,0,0.16);
+  color: var(--accent);
+  border-color: rgba(255,212,0,0.55);
+}
+
+/* Progress bar: rounded navy track, glowing yellow-graded fill. */
+html[data-variant="5"] .progress-bar {
+  border-radius: 999px;
+  background: #081225;
+  border: 1px solid var(--border);
+  height: 7px;
+}
+html[data-variant="5"] .progress-fill {
+  border-radius: 999px;
+  background: var(--accent);
+  background-image: linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%);
+  box-shadow: 0 0 10px rgba(255,212,0,0.45);
+}
+
+/* Primary button: yellow fill, navy text, rounded, soft yellow glow. */
+html[data-variant="5"] .btn-primary {
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  background-image: linear-gradient(180deg, var(--accent-light) 0%, var(--accent) 100%);
+  color: #0a1530;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  box-shadow: 0 0 16px rgba(255,212,0,0.3);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+html[data-variant="5"] .btn-primary:hover {
+  background-image: linear-gradient(180deg, #ffec80 0%, var(--accent-light) 100%);
+  box-shadow: 0 0 24px rgba(255,212,0,0.5);
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+/* Tabs: rounded pills; active = yellow fill, navy text, soft glow. */
+html[data-variant="5"] .tab-btn {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+html[data-variant="5"] .tab-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a1530;
+  box-shadow: 0 0 16px rgba(255,212,0,0.35);
+}
+html[data-variant="5"] .tab-btn:hover:not(.active) {
+  background: rgba(255,212,0,0.1);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+
+/* Scrollbar: navy track, glowing yellow thumb. */
+html[data-variant="5"] ::-webkit-scrollbar-track {
+  background: #081225;
+}
+html[data-variant="5"] ::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 999px;
 }

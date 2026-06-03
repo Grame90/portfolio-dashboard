@@ -1,6 +1,5 @@
 "use client";
 
-import ApexChart from "@/components/ApexChart";
 import type { LivePosition } from "../types";
 
 interface PeriodMetric {
@@ -32,15 +31,6 @@ interface SummaryRowProps {
   recommendation: Recommendation;
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  ETF: "#7c3aed",
-  Акция: "#3b82f6",
-  Крипто: "#f59e0b",
-  Сырьё: "#22c55e",
-  Кэш: "#94a3b8",
-  Облигация: "#06b6d4",
-};
-
 export function SummaryRow({
   positions,
   portfolioTotal,
@@ -58,20 +48,6 @@ export function SummaryRow({
   recommendation,
 }: SummaryRowProps) {
   const dailyChange = portfolioTotal - prevTotal;
-
-  // Structure groups
-  const groups: Record<string, { value: number; color: string }> = {};
-  positions.filter(p => p.value >= 10).forEach((p) => {
-    const val = p.qty * p.currentPrice;
-    if (!groups[p.type]) groups[p.type] = { value: 0, color: TYPE_COLORS[p.type] ?? "#9d6ef5" };
-    groups[p.type].value += val;
-  });
-  const structureTotal = Object.values(groups).reduce((s, g) => s + g.value, 0) || 1;
-  const liveDist = Object.entries(groups).map(([name, g]) => ({
-    name,
-    value: Math.round((g.value / structureTotal) * 100),
-    color: g.color,
-  }));
 
   // Daily-status dot tooltip
   const stale = positions.filter((p) => {
@@ -160,42 +136,6 @@ export function SummaryRow({
                   </div>
                 </>
               )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-title">Структура портфеля</div>
-        <ApexChart
-          type="donut"
-          height={115}
-          series={liveDist.map(d => d.value)}
-          options={{
-            labels: liveDist.map(d => d.name),
-            colors: liveDist.map(d => d.color),
-            chart: { background: "transparent", animations: { enabled: true, speed: 400 } },
-            stroke: { width: 2, colors: ["transparent"] },
-            dataLabels: { enabled: false },
-            legend: { show: false },
-            plotOptions: { pie: { donut: { size: "60%" } } },
-            tooltip: { theme: "dark", y: { formatter: (v: number) => `${v}%` } },
-            theme: { mode: "dark" },
-          }}
-        />
-        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
-          {liveDist.map((e) => (
-            <div key={e.name}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 2, background: e.color, display: "inline-block", flexShrink: 0 }} />
-                  <span style={{ color: "var(--text-secondary)" }}>{e.name}</span>
-                </span>
-                <span style={{ fontWeight: 700 }}>{e.value}%</span>
-              </div>
-              <div style={{ height: 3, background: "var(--border)", borderRadius: 2 }}>
-                <div style={{ height: "100%", width: `${e.value}%`, background: e.color, borderRadius: 2, transition: "width 0.4s" }} />
-              </div>
             </div>
           ))}
         </div>

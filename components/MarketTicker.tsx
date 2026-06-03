@@ -5,6 +5,10 @@ import { useMobile } from "@/lib/useMobile";
 import { useLayoutEditor } from "@/components/LayoutEditor";
 
 export const TICKER_HEIGHT = 34;
+// Total fixed-header height = market ticker + indicators strip (both TICKER_HEIGHT).
+// Single source of truth — consumed by ConditionalLayout (content offset),
+// Sidebar (top), and PageHeader (sticky top). Keep these in sync via this constant.
+export const HEADER_STACK_HEIGHT = TICKER_HEIGHT * 2;
 
 // ─── catalog ──────────────────────────────────────────────────────────────────
 

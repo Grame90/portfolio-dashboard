@@ -7,6 +7,9 @@ import { lastUpdated } from "@/lib/mockData";
 import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import AIAnalyzer from "@/components/AIAnalyzer";
+import CrisisBadge from "@/components/CrisisBadge";
+import FearGreedBadge from "@/components/FearGreedBadge";
+import { HEADER_STACK_HEIGHT } from "@/components/MarketTicker";
 import { importBackupPayload } from "@/lib/portfolioBackup";
 import { writeDiarySnapshotForToday } from "@/lib/diary/auto-snapshot";
 import { usePortfolioStore } from "@/lib/store/usePortfolioStore";
@@ -187,7 +190,7 @@ export default function PageHeader({ title, subtitle, showSnapshot = false, titl
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         padding: isMobile ? "12px 14px" : "16px 24px", borderBottom: "1px solid var(--border)",
-        background: "var(--bg-secondary)", position: "sticky", top: 0, zIndex: 10,
+        background: "var(--bg-secondary)", position: "sticky", top: HEADER_STACK_HEIGHT, zIndex: 10,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <div>
@@ -195,6 +198,8 @@ export default function PageHeader({ title, subtitle, showSnapshot = false, titl
             {!isMobile && <p style={{ margin: 0, fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>{subtitle}</p>}
           </div>
           {titleBadge && <div>{titleBadge}</div>}
+          <CrisisBadge />
+          <FearGreedBadge />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>

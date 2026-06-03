@@ -12,6 +12,7 @@ import { useMobile } from "@/lib/useMobile";
 import { useTheme } from "@/components/ThemeProvider";
 import { useApp } from "@/lib/useApp";
 import { LogOut } from "lucide-react";
+import { HEADER_STACK_HEIGHT } from "@/components/MarketTicker";
 
 const navItems = [
   { href: "/portfolio",  icon: LayoutDashboard, label: "Портфель" },
@@ -256,7 +257,7 @@ export default function Sidebar() {
       width: 72, minHeight: "100vh",
       background: "var(--bg-secondary)", borderRight: "1px solid var(--border)",
       display: "flex", flexDirection: "column", alignItems: "center",
-      padding: "16px 0", position: "fixed", left: 0, top: 34, bottom: 0, zIndex: 50,
+      padding: "16px 0", position: "fixed", left: 0, top: HEADER_STACK_HEIGHT, bottom: 0, zIndex: 50,
     }}>
       <div style={{
         width: 40, height: 40, borderRadius: 10, background: "var(--accent)",

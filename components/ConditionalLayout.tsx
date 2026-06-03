@@ -8,7 +8,8 @@ import { useApp } from "@/lib/useApp";
 import { useMobile } from "@/lib/useMobile";
 import { TooltipProvider } from "@/components/ui/Tooltip";
 import { LayoutEditorProvider } from "@/components/LayoutEditor";
-import MarketTicker, { TICKER_HEIGHT } from "@/components/MarketTicker";
+import MarketTicker, { HEADER_STACK_HEIGHT } from "@/components/MarketTicker";
+import IndicatorsTicker from "@/components/IndicatorsTicker";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, authLoading } = useApp();
@@ -39,11 +40,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return (
     <LayoutEditorProvider>
       <MarketTicker />
+      <IndicatorsTicker />
       <div style={{ display: "flex", minHeight: "100vh" }}>
         <Sidebar />
         <main style={{
           marginLeft: isMobile ? 0 : 72,
-          paddingTop: TICKER_HEIGHT,
+          paddingTop: HEADER_STACK_HEIGHT,
           paddingBottom: isMobile ? 60 : 0,
           flex: 1,
           minHeight: "100vh",

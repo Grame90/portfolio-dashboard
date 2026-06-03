@@ -243,7 +243,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 
       const now = new Date();
       const snap = {
-        date: now.toLocaleDateString("ru-РУ", { day: "2-digit", month: "2-digit", year: "numeric" }),
+        date: now.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }),
         time: now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }),
         capital: Math.round(total),
         cost: Math.round(cost),
